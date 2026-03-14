@@ -1,0 +1,436 @@
+#version 430 core
+
+#define T_CORRECTION 0.00001
+#define INFINITY 0x7f7fffff
+#define SPECULAR_FUNCTION calculate_blinn_phong_specular
+#define ILLUMINATION_FUNCTION calculate_lighting_flat_shading
+
+#define PROCESS_PRIMITIVES(BUFFER_ARRAY, COUNT, TYPE, INTERSECT_FUNCTION) \
+  for (int i = 0; i < COUNT; i++) { \
+    TYPE obj = BUFFER_ARRAY[i]; \
+    vec3 local_ray_origin = vec3(obj.inverse_model * vec4(ray.origin, 1.0)); \
+    vec3 local_ray_direction = vec3(obj.inverse_model * vec4(ray.direction, 0.0)); \
+    float scale = length(local_ray_direction); \
+\
+    Ray local_ray = Ray(local_ray_origin, local_ray_direction / scale); \
+    vec3 local_normal; \
+    float t = INTERSECT_FUNCTION(local_ray, obj, local_normal) / scale; \
+    if (t > 0.0 && t < min_dist) { \
+      min_dist = t; \
+      min_material = material_from_mat4(obj.material); \
+      min_normal = normalize(mat3(transpose(obj.inverse_model)) * local_normal); \
+    } \
+  }
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+layout(rgba32f, binding = 0) uniform image2D img_output;
+
+struct Ray {
+  vec3 origin;
+  vec3 direction;
+};
+
+struct Material {
+  vec3 ambient;
+  vec3 diffuse;
+  vec3 specular;
+  float shininess;
+};
+
+Material material_from_mat4(mat4 gpu_material) {
+  Material material = Material (
+    gpu_material[0].xyz,
+    gpu_material[1].xyz,
+    gpu_material[2].xyz,
+    gpu_material[0].w
+  );
+  return material;
+}
+
+struct Sphere {
+  mat4 inverse_model;
+  mat4 material;
+  float radius;
+  uint id_heap;
+  uint id_list;
+  float padding;
+};
+
+layout(std430, binding = 1) buffer SpheresBuffer {
+  Sphere spheres[];
+};
+
+struct Cylinder {
+  mat4 inverse_model;
+  mat4 material;
+  float radius;
+  float height;
+  uint id_heap;
+  uint id_list;
+};
+
+layout(std430, binding = 2) buffer CylindersBuffer {
+  Cylinder cylinders[];
+};
+
+struct Cone {
+  mat4 inverse_model;
+  mat4 material;
+  float radius;
+  float height;
+  uint id_heap;
+  uint id_list;
+};
+
+layout(std430, binding = 3) buffer ConesBuffer {
+  Cone cones[];
+};
+
+struct Cube {
+  mat4 inverse_model;
+  mat4 material;
+  uint id_heap;
+  uint id_list;
+  vec2 padding;
+};
+
+layout(std430, binding = 4) buffer CubesBuffer {
+  Cube cubes[];
+};
+
+struct PointLight {
+  vec3 position;
+  float padding;
+
+  vec3 diffuse;
+  float padding2;
+
+  vec3 specular;
+  float padding3;
+
+  vec3 ambient;
+  float padding4;
+};
+
+layout(std430, binding = 5) buffer PointLightsBuffer {
+  PointLight point_lights[];
+};
+
+struct CSGHeapNode {
+  uint type;
+  uint id;
+};
+
+layout(std430, binding = 6) buffer CSGHeapBuffer {
+  CSGHeapNode csg_heap[];
+};
+
+uniform vec3 camera_pos;
+uniform mat4 inverse_view;
+uniform mat4 inverse_projection;
+uniform int num_spheres;
+uniform int num_cylinders;
+uniform int num_cones;
+uniform int num_cubes;
+uniform int num_point_lights;
+uniform int csg_heap_max_size;
+
+float intersects_sphere(Ray ray, Sphere sphere, out vec3 local_normal);
+float intersects_disk(Ray ray, float y_height, float radius);
+float intersects_cylinder(Ray ray, Cylinder cylinder, out vec3 local_normal);
+float intersects_cone(Ray ray, Cone cone, out vec3 local_normal);
+float intersects_cube(Ray ray, Cube cube, out vec3 local_normal);
+float intersects_aabb(Ray ray, vec3 box_min, vec3 box_max, out vec3 local_normal);
+
+vec3 calculate_lighting(vec3 hit_point, vec3 normal, Material material);
+vec3 calculate_point_light(PointLight light, Material material, vec3 point, vec3 normal, vec3 cameraDirection);
+float calculate_blinn_phong_specular(vec3 lightDirection, vec3 normal, vec3 cameraDirection, float shininess);
+
+bool sphere_contains_point(Sphere sphere, vec3 point);
+bool cylinder_contains_point(Cylinder cylinder, vec3 point);
+bool cone_contains_point(Cone cone, vec3 point);
+bool cube_contains_point(Cube cube, vec3 point);
+
+void main() {
+  ivec2 pixel_coords = ivec2(gl_GlobalInvocationID.xy);
+  ivec2 screen_size = imageSize(img_output);
+
+  if (pixel_coords.x >= screen_size.x || pixel_coords.y >= screen_size.y) {
+    return;
+  }
+
+  vec3 final_color = vec3(0.0);
+  vec2 uv = (vec2(pixel_coords) / vec2(screen_size)) * 2.0 - 1.0;
+
+  vec4 pixel_position = inverse_projection * vec4(uv.x, uv.y, 1.0, 1.0);
+  vec3 ray_direction = vec3(inverse_view * vec4(normalize(pixel_position.xyz / pixel_position.w), 0));
+  vec3 ray_origin = camera_pos;
+  Ray ray = Ray(ray_origin, ray_direction);
+  vec3 sample_color = vec3(0.5294, 0.8078, 0.9215);
+
+  float min_dist = INFINITY;
+  vec3 min_normal = vec3(0.0);
+  Material min_material = Material(vec3(0.0), vec3(0.0), vec3(0.0), 0.0);
+
+  PROCESS_PRIMITIVES(spheres, num_spheres, Sphere, intersects_sphere);
+  PROCESS_PRIMITIVES(cylinders, num_cylinders, Cylinder, intersects_cylinder);
+  PROCESS_PRIMITIVES(cones, num_cones, Cone, intersects_cone);
+  PROCESS_PRIMITIVES(cubes, num_cubes, Cube, intersects_cube);
+
+  if (min_dist < INFINITY) {
+    vec3 hit_point = ray.origin + ray.direction * min_dist;
+    vec3 cameraDirection = normalize(camera_pos - hit_point);
+
+    sample_color = calculate_lighting(hit_point, min_normal, min_material);
+  }
+
+  final_color += sample_color;
+  imageStore(img_output, pixel_coords, vec4(final_color, 1.0));
+}
+
+
+// Intersection functions
+
+float intersects_sphere(Ray ray, Sphere sphere, out vec3 local_normal) {
+  vec3 oc = ray.origin;
+  float b = dot(oc, ray.direction);
+  float c = dot(oc, oc) - sphere.radius * sphere.radius;
+  float delta = b * b - c;
+
+  if (delta < 0.0) {
+    return -1.0;
+  }
+
+  float sqrt_delta = sqrt(delta);
+  float t2 = -b + sqrt_delta;
+  if (t2 < 0.0) {
+    return -1.0;
+  }
+
+  float t1 = -b - sqrt_delta;
+  if (t1 < 0.0) {
+    vec3 local_point = ray.origin + t2 * ray.direction;
+    local_normal = normalize(local_point);
+    return t2 - T_CORRECTION;
+  }
+
+  vec3 local_point = ray.origin + t1 * ray.direction;
+  local_normal = normalize(local_point);
+  return t1 - T_CORRECTION;
+}
+
+float intersects_cone(Ray ray, Cone cone, out vec3 local_normal) {
+  float half_h = cone.height * 0.5;
+  vec3 tip = vec3(0.0, half_h, 0.0);
+  vec3 base = vec3(0.0, -half_h, 0.0);
+
+  vec3 base_normal = vec3(0.0, -1.0, 0.0);
+  float t_base = intersects_disk(ray, -half_h, cone.radius);
+
+  vec3 ro = ray.origin - tip;
+  vec3 rd = ray.direction;
+
+  float m = (cone.radius * cone.radius) / (cone.height * cone.height);
+
+  float a = rd.x * rd.x + rd.z * rd.z - m * rd.y * rd.y;
+  float b = ro.x * rd.x + ro.z * rd.z - m * ro.y * rd.y;
+  float c = ro.x * ro.x + ro.z * ro.z - m * ro.y * ro.y;
+  float delta = b * b - a * c;
+
+  float t_side = -1.0;
+  if (delta >= 0.0) {
+    float sqrt_delta = sqrt(delta);
+    float t1 = (-b - sqrt_delta) / a;
+    float t2 = (-b + sqrt_delta) / a;
+
+    vec3 p1 = ro + t1 * rd;
+    if (t1 > 0.0 && p1.y < 0.0 && p1.y > -cone.height) {
+      t_side = t1;
+    }
+
+    vec3 p2 = ro + t2 * rd;
+    if (t2 > 0.0 && p2.y < 0.0 && p2.y > -cone.height) {
+      if (t_side < 0.0 || t2 < t_side) {
+        t_side = t2;
+      }
+    }
+  }
+
+  if (t_base > 0.0 && t_side > 0.0) {
+    if (t_base < t_side) {
+      local_normal = base_normal;
+      return t_base - T_CORRECTION;
+    } else {
+      vec3 local_point = ray.origin + t_side * ray.direction;
+      vec3 axis = vec3(0.0, 1.0, 0.0);
+      vec3 tip_to_point = local_point - tip;
+      local_normal = normalize(cross(tip_to_point, cross(axis, tip_to_point)));
+      return t_side - T_CORRECTION;
+    }
+  } else if (t_base > 0.0) {
+    local_normal = base_normal;
+    return t_base - T_CORRECTION;
+  } else {
+    vec3 local_point = ray.origin + t_side * ray.direction;
+    vec3 axis = vec3(0.0, 1.0, 0.0);
+    vec3 tip_to_point = local_point - tip;
+    local_normal = normalize(cross(tip_to_point, cross(axis, tip_to_point)));
+    return t_side - T_CORRECTION;
+  }
+}
+
+float intersects_cylinder(Ray ray, Cylinder cylinder, out vec3 local_normal) {
+  float half_h = cylinder.height * 0.5;
+
+  vec3 top_center = vec3(0.0, half_h, 0.0);
+  vec3 bot_center = vec3(0.0, -half_h, 0.0);
+
+  float t_top = intersects_disk(ray, half_h, cylinder.radius);
+  float t_bot = intersects_disk(ray, -half_h, cylinder.radius);
+
+  vec3 co = ray.origin;
+  vec3 rd = ray.direction;
+
+  float a = dot(rd.xz, rd.xz);
+  float b = dot(co.xz, rd.xz);
+  float c = dot(co.xz, co.xz) - (cylinder.radius * cylinder.radius);
+  float delta = b * b - a * c;
+
+  float t_side = -1.0;
+  if (delta >= 0.0) {
+    float sqrt_delta = sqrt(delta);
+    float t1 = (-b - sqrt_delta) / (a);
+    float t2 = (-b + sqrt_delta) / (a);
+
+    vec3 p1 = co + t1 * rd;
+    if (t1 > 0.001 && p1.y >= -half_h && p1.y <= half_h) {
+      t_side = t1;
+    }
+
+    vec3 p2 = co + t2 * rd;
+    if (t2 > 0.001 && p2.y >= -half_h && p2.y <= half_h) {
+      if (t_side < 0.0 || t2 < t_side) {
+        t_side = t2;
+      }
+    }
+  }
+
+  float t = -1.0;
+
+  if (t_side > 0.0) {
+    t = t_side;
+    vec2 hit_point_xz = (ray.origin + t_side * ray.direction).xz;
+    vec3 local_point = vec3(hit_point_xz.x, 0.0, hit_point_xz.y);
+    local_normal = normalize(local_point);
+  }
+
+  if (t_top > 0.0 && (t < 0.0 || t_top < t)) {
+    t = t_top;
+    local_normal = vec3(0.0, 1.0, 0.0);
+  }
+
+  if (t_bot > 0.0 && (t < 0.0 || t_bot < t)) {
+    t = t_bot;
+    local_normal = vec3(0.0, -1.0, 0.0);
+  }
+
+  return t - T_CORRECTION;
+}
+
+float intersects_disk(Ray ray, float y_height, float radius) {
+  if (abs(ray.direction.y) < T_CORRECTION) {
+    return -1.0;
+  }
+
+  float t = (y_height - ray.origin.y) / ray.direction.y;
+  if (t < 0.0) {
+    return -1.0;
+  }
+
+  vec3 hit_point = ray.origin + t * ray.direction;
+  float dist2_xz = hit_point.x * hit_point.x + hit_point.z * hit_point.z;
+  if (dist2_xz > radius * radius) {
+    return -1.0;
+  }
+
+  return t - T_CORRECTION;
+}
+
+float intersects_cube(Ray ray, Cube cube, out vec3 local_normal) {
+  vec3 bounds = vec3(0.5, 0.5, 0.5);
+  return intersects_aabb(ray, -bounds, bounds, local_normal);
+}
+
+float intersects_aabb(Ray ray, vec3 box_min, vec3 box_max, out vec3 local_normal) {
+  vec3 inv_dir = 1.0 / (ray.direction + vec3(T_CORRECTION));
+
+  vec3 t0 = (box_min - ray.origin) * inv_dir;
+  vec3 t1 = (box_max - ray.origin) * inv_dir;
+
+  vec3 tmin = min(t0, t1);
+  vec3 tmax = max(t0, t1);
+
+  float t_enter = max(max(tmin.x, tmin.y), tmin.z);
+  float t_exit = min(min(tmax.x, tmax.y), tmax.z);
+
+  float t = 1.0;
+  if (t_enter > t_exit || t_exit < 0.0) {
+    return -1.0;
+  } else if (t_enter > 0.0) {
+    t = t_enter - T_CORRECTION;
+  } else {
+    t = t_exit - T_CORRECTION;
+  }
+
+  vec3 hit_point = ray.origin + t * ray.direction;
+  float max_val = max(max(abs(hit_point.x), abs(hit_point.y)), abs(hit_point.z));
+  if (abs(max_val - abs(hit_point.x)) < T_CORRECTION) {
+    local_normal = vec3(sign(hit_point.x), 0.0, 0.0);
+  } else if (abs(max_val - abs(hit_point.y)) < T_CORRECTION) {
+    local_normal = vec3(0.0, sign(hit_point.y), 0.0);
+  } else {
+    local_normal = vec3(0.0, 0.0, sign(hit_point.z));
+  }
+
+  return t;
+}
+
+
+// Illumination functions
+
+vec3 calculate_lighting_flat_shading(vec3 hit_point, vec3 normal, Material material) {
+  return normal;
+}
+
+vec3 calculate_lighting(vec3 hit_point, vec3 normal, Material material) {
+  vec3 result = vec3(0.0);
+  vec3 viewDir = normalize(camera_pos - hit_point);
+
+  for(int i = 0; i < num_point_lights; i++) {
+    result += calculate_point_light(point_lights[i], material, hit_point, normal, viewDir);
+  }
+  return result;
+}
+
+vec3 calculate_point_light(PointLight light, Material material, vec3 point, vec3 normal, vec3 cameraDirection) {
+  vec3 ambientLight = light.ambient * material.ambient;
+
+  vec3 lightDirection = normalize(light.position - point);
+  float diffuse = max(dot(normal, lightDirection), 0.0);
+  float dist = max(distance(light.position, point), 1.0);
+  vec3 diffuseLight = light.diffuse * diffuse * material.diffuse * (4.0 / (dist * dist));
+
+  vec3 specularLight = vec3(0.0, 0.0, 0.0);
+  if (diffuse > 0.0) {
+    float specular = SPECULAR_FUNCTION(lightDirection, normal, cameraDirection, material.shininess);
+    specularLight = light.specular * specular * material.specular;
+  }
+
+  return (ambientLight + diffuseLight + specularLight);
+}
+
+float calculate_blinn_phong_specular(vec3 lightDirection, vec3 normal, vec3 cameraDirection, float shininess) {
+  vec3 halfwayDirection = normalize(lightDirection + cameraDirection);
+  float specular = pow(max(dot(normal, halfwayDirection), 0.0), shininess * 4.0);
+  return specular;
+}
