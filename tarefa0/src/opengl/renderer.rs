@@ -3,6 +3,7 @@ use std::{fs::File, rc::Rc};
 use crate::opengl::{program::Program, shaders::Shaders};
 
 #[allow(dead_code)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub enum ProgramType {
   Common,
   Light,

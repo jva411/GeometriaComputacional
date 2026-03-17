@@ -11,6 +11,7 @@ pub struct Scene {
   pub camera: Camera,
   pub objects: Vec<Rc<RefCell<dyn Object>>>,
   pub objects_by_id: HashMap<Uuid, Rc<RefCell<dyn Object>>>,
+  pub objects_by_program: HashMap<ProgramType, Vec<Rc<RefCell<dyn Object>>>>,
   pub lights: Vec<Rc<RefCell<dyn Light>>>,
   pub lights_by_id: HashMap<Uuid, Rc<RefCell<dyn Light>>>,
   pub renderer: Rc<RefCell<Renderer>>,
@@ -26,6 +27,7 @@ impl Scene {
       camera,
       objects: Vec::new(),
       objects_by_id: HashMap::new(),
+      objects_by_program: HashMap::new(),
       lights: Vec::new(),
       lights_by_id: HashMap::new(),
       renderer,
@@ -55,18 +57,21 @@ impl Scene {
   }
 
   fn draw_objects(&self, renderer: &mut Renderer) {
-    renderer.bind_program(ProgramType::Common);
-    let program = &renderer.current_program;
+    for (program_type, objects) in &self.objects_by_program {
+      renderer.bind_program(*program_type);
+      let program = &renderer.current_program;
 
-    self.camera.send_to_program(&program);
-    program.set_uniform1i("n_lights", self.lights.len() as i32).expect("Failed to set number of lights");
+      self.camera.send_to_program(&program);
+      let has_lights = program.set_uniform1i("n_lights", self.lights.len() as i32).is_ok();
+      if has_lights {
+        for (i, light) in self.lights.iter().enumerate() {
+          light.borrow().send_to_program(&program, i);
+        }
+      }
 
-    for (i, light) in self.lights.iter().enumerate() {
-      light.borrow().send_to_program(&program, i);
-    }
-
-    for object in &self.objects {
-      object.borrow().draw(program, None);
+      for object in objects {
+        object.borrow().draw(program, None);
+      }
     }
   }
 
@@ -100,13 +105,20 @@ impl Scene {
   pub fn add_object(&mut self, object: Rc<RefCell<dyn Object>>) {
     let id = object.borrow().get_id();
     self.objects.push(object.clone());
-    self.objects_by_id.insert(id, object);
+    self.objects_by_id.insert(id, object.clone());
+    self.objects_by_program.entry(object.borrow().get_program_type()).or_default().push(object.clone());
   }
 
   pub fn remove_object(&mut self, id: Uuid) {
     if self.objects_by_id.remove(&id).is_none() {
       return
     };
+
+    if let Some(objects) = self.objects_by_program.get_mut(&self.objects_by_id.get(&id).unwrap().borrow().get_program_type()) {
+      if let Some(index) = objects.iter().position(|object| object.borrow().get_id() == id) {
+        objects.remove(index);
+      }
+    }
 
     if let Some(index) = self.objects.iter().position(|object| object.borrow().get_id() == id) {
       self.objects.remove(index);

@@ -2,7 +2,7 @@ use std::{any::Any, cell::RefCell, rc::Rc};
 
 use uuid::Uuid;
 
-use crate::{opengl::program::Program, utils::{material::Material, ray::Ray, transform::{Transform, Transformable}}};
+use crate::{opengl::{program::Program, renderer::ProgramType}, utils::{material::Material, ray::Ray, transform::{Transform, Transformable}}};
 
 #[allow(dead_code)]
 pub trait Object: Transformable {
@@ -11,6 +11,7 @@ pub trait Object: Transformable {
   fn get_name_mut(&mut self) -> &mut String;
   fn set_name(&mut self, name: String);
   fn get_type(&self) -> ObjectType;
+  fn get_program_type(&self) -> ProgramType { ProgramType::Common }
 
   fn get_material(&self) -> &Material;
   fn get_material_mut(&mut self) -> &mut Material;
@@ -36,6 +37,7 @@ pub enum ObjectType {
   Cone,
   Generic,
   Square,
+  PointsCloud,
 }
 
 #[macro_export]

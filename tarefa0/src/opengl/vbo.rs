@@ -39,4 +39,15 @@ impl VBO {
       );
     }
   }
+
+  pub fn update_data(&self, offset: u32, data: &[f32]) {
+    unsafe {
+      gl::BufferSubData(
+        gl::ARRAY_BUFFER,
+        offset as isize,
+        (data.len() * size_of::<f32>()) as isize,
+        data.as_ptr().cast(),
+      );
+    }
+  }
 }

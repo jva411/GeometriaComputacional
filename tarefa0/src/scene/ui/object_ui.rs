@@ -248,7 +248,7 @@ impl UIManager {
             props.obj_path = Some(path);
           }
         },
-        ObjectType::Square => {
+        _ => {
           unimplemented!();
         }
       }

@@ -1,9 +1,10 @@
 use std::{cell::RefCell, rc::Rc, time::Instant};
 
+use glam::Vec3;
 use sdl2::video::{GLProfile, SwapInterval};
 use egui_sdl2_gl::{self as egui_backend, DpiScaling, ShaderVersion};
 
-use crate::{opengl::renderer::Renderer, scene::{events::{EventResult, EventsManager}, scene::Scene, ui::ui::UIManager}, utils::camera::Camera};
+use crate::{objects::geometry::points_cloud::PointsCloud, opengl::renderer::Renderer, scene::{events::{EventResult, EventsManager}, scene::Scene, ui::ui::UIManager}, utils::camera::Camera};
 
 #[allow(dead_code)]
 pub struct SdlContext {
@@ -43,8 +44,27 @@ impl Window {
   pub fn new(title: &'static str, width: u32, height: u32, canvas_width: u32) -> Self {
     let (sdl, egui) = Window::load_gl(title, width, height);
     let renderer = Rc::new(RefCell::new(Renderer::new().unwrap()));
-    let scene = Scene::new(Camera::new(), Rc::clone(&renderer));
+    let mut scene = Scene::new(Camera::new(), Rc::clone(&renderer));
     let events_manager = EventsManager::new();
+
+    let mut points = vec![
+      Vec3::new(-0.5, -0.5, -0.5),
+      Vec3::new( 0.5, -0.5, -0.5),
+      Vec3::new( 0.5,  0.5, -0.5),
+      Vec3::new(-0.5,  0.5, -0.5),
+      Vec3::new(-0.5, -0.5,  0.5),
+      Vec3::new( 0.5, -0.5,  0.5),
+      Vec3::new( 0.5,  0.5,  0.5),
+      Vec3::new(-0.5,  0.5,  0.5),
+    ];
+    let n = 100;
+    for _ in 0..n {
+      points.push(Vec3::new(rand::random(), rand::random(), rand::random()) - Vec3::ONE * 0.5);
+    }
+    let points_cloud = PointsCloud::new("Points Cloud".to_string(), points);
+    let cloud_hull = points_cloud.convex_hull();
+    scene.add_object(Rc::new(RefCell::new(points_cloud)));
+    scene.add_object(Rc::new(RefCell::new(cloud_hull)));
 
     let window = Window {
       width,
@@ -85,6 +105,7 @@ impl Window {
     unsafe {
       gl::Enable(gl::DEPTH_TEST);
       gl::Enable(gl::CULL_FACE);
+      gl::Enable(gl::PROGRAM_POINT_SIZE)
     };
 
     let event_pump = sdl_context.event_pump().unwrap();
