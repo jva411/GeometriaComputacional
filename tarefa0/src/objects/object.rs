@@ -41,7 +41,7 @@ pub enum ObjectType {
   Sphere,
   Cylinder,
   Cone,
-  Generic,
+  Mesh,
   Square,
   PointsCloud,
 }
@@ -60,6 +60,6 @@ macro_rules! implement_partial_Object {
     fn as_any(&self) -> &dyn std::any::Any where Self: Sized { self }
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any where Self: Sized { self }
 
-    fn clone_rc_ref(&self) -> Rc<RefCell<dyn Object>> { Rc::new(RefCell::new(self.clone())) }
+    fn clone_rc_ref(&self) -> std::rc::Rc<std::cell::RefCell<dyn Object>> { std::rc::Rc::new(std::cell::RefCell::new(self.clone())) }
   };
 }

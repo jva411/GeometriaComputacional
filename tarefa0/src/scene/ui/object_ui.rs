@@ -5,7 +5,7 @@ use glam::Vec3;
 use rfd::FileDialog;
 use uuid::Uuid;
 
-use crate::{objects::{geometry::points_cloud::PointsCloud, object::{Object, ObjectType}, primitives::{cone::Cone, cube::Cube, cylinder::Cylinder, sphere::Sphere}}, scene::{scene::{Scene, SceneSelectedObject}, ui::ui::{CreatingObject, CreatingObjectType, SelectedObject, UICommand, UIManager}, window::Window}};
+use crate::{objects::{geometry::points_cloud::PointsCloud, mesh::mesh::Mesh, object::{Object, ObjectType}, primitives::{cone::Cone, cube::Cube, cylinder::Cylinder, sphere::Sphere}}, scene::{scene::{Scene, SceneSelectedObject}, ui::ui::{CreatingObject, CreatingObjectType, SelectedObject, UICommand, UIManager}, window::Window}};
 
 
 #[derive(Clone, Debug)]
@@ -38,6 +38,7 @@ impl Window {
       ObjectType::Sphere => Rc::new(RefCell::new(Sphere::new(props.name, props.radius, props.subdivisions))),
       ObjectType::Cylinder => Rc::new(RefCell::new(Cylinder::new(props.name, props.radius, props.height, props.subdivisions))),
       ObjectType::Cone => Rc::new(RefCell::new(Cone::new(props.name, props.radius, props.height, props.subdivisions))),
+      ObjectType::Mesh => Rc::new(RefCell::new(Mesh::new(props.name, props.obj_path.unwrap()))),
       _ => unimplemented!("ObjectType::{:?} creation not implemented yet", props.primitive),
     }
   }
@@ -246,8 +247,8 @@ impl UIManager {
           );
           ui.selectable_value(
             &mut props.primitive,
-            ObjectType::Generic,
-            "Generic",
+            ObjectType::Mesh,
+            "Mesh",
           );
         });
 
@@ -284,7 +285,7 @@ impl UIManager {
             ui.add(egui::DragValue::new(&mut props.subdivisions).range(4..=100).speed(1));
           });
         },
-        ObjectType::Generic => {
+        ObjectType::Mesh => {
           ui.label("Object File: ");
           let placeholder = if let Some(path) = &props.obj_path {
             path.file_stem().unwrap().to_str().unwrap()
@@ -299,6 +300,11 @@ impl UIManager {
             props.name = stem.to_string();
             props.obj_path = Some(path);
           }
+
+          ui.horizontal(|ui| {
+            ui.label("Scale");
+            ui.add(egui::DragValue::new(&mut props.radius).range(0..=1).speed(0.001));
+          });
         },
         _ => {
           unimplemented!();
