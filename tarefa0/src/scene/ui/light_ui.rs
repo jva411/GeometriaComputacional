@@ -4,7 +4,7 @@ use egui::{ComboBox, Ui};
 use glam::Vec3;
 use uuid::Uuid;
 
-use crate::{lights::{light::{Light, LightType}, point_light::PointLight}, scene::{scene::{Scene, SceneSelectedObject}, ui::ui::{CreatingObject, SelectedObject, UICommand, UIManager}, window::Window}};
+use crate::{lights::{light::{Light, LightType}, point_light::PointLight}, scene::{scene::{Scene, SceneSelectedObject}, ui::ui::{CreatingObject, CreatingObjectType, SelectedObject, UICommand, UIManager}, window::Window}};
 
 #[derive(Clone, Debug)]
 pub struct NewLightProperties {
@@ -64,6 +64,7 @@ impl Window {
   pub fn draw_lights_list(ui: &mut Ui, ui_manager: &mut UIManager, scene: &mut Scene) {
     if ui.button("Add Light").clicked() {
       ui_manager.is_add_object_window_open = true;
+      ui_manager.creating_object_type = CreatingObjectType::Light;
       ui_manager.creating_object = CreatingObject::Light(NewLightProperties::default());
     }
     ui.separator();

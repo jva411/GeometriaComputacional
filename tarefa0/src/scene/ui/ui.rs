@@ -16,6 +16,8 @@ pub enum UICommand {
   CreateObject(CreatingObject),
   DeleteObject(SelectedObject),
   CloneObject(SelectedObject),
+  CreatePointsCloud(SelectedObject),
+  CreateConvexHull(SelectedObject),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -249,6 +251,20 @@ impl Window {
             SelectedObject::Object(id) => { self.clone_object(id); }
             SelectedObject::Light(id) => { self.clone_light(id); }
             SelectedObject::None => {}
+          }
+        }
+
+        UICommand::CreatePointsCloud(selected_object) => {
+          match selected_object {
+            SelectedObject::Object(id) => { self.create_points_cloud_from_object(id); }
+            _ => {}
+          }
+        }
+
+        UICommand::CreateConvexHull(selected_object) => {
+          match selected_object {
+            SelectedObject::Object(id) => { self.create_convex_hull_from_points_cloud(id); }
+            _ => {}
           }
         }
       }

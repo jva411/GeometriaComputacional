@@ -1,8 +1,9 @@
 use std::{cell::RefCell, rc::Rc};
 
+use glam::Vec3;
 use uuid::Uuid;
 
-use crate::{implement_partial_Object, implement_transformable, objects::object::{Object, ObjectType}, opengl::{ebo::EBO, program::Program, vao::VAO, vbo::VBO}, utils::{core::SIZE_F32, material::Material, ray::Ray, transform::Transform}};
+use crate::{implement_partial_Object, implement_transformable, objects::{geometry::points_cloud::PointsCloud, object::{Object, ObjectType}}, opengl::{ebo::EBO, program::Program, vao::VAO, vbo::VBO}, utils::{core::SIZE_F32, material::Material, ray::Ray, transform::Transform}};
 
 #[allow(dead_code)]
 pub struct Cube {
@@ -89,6 +90,19 @@ impl Cube {
       ebo,
     };
   }
+
+  fn get_points_list(&self) -> Vec<Vec3> {
+    return vec![
+      Vec3::new(-0.5, -0.5, -0.5),
+      Vec3::new( 0.5, -0.5, -0.5),
+      Vec3::new( 0.5,  0.5, -0.5),
+      Vec3::new(-0.5,  0.5, -0.5),
+      Vec3::new(-0.5, -0.5,  0.5),
+      Vec3::new( 0.5, -0.5,  0.5),
+      Vec3::new( 0.5,  0.5,  0.5),
+      Vec3::new(-0.5,  0.5,  0.5),
+    ];
+  }
 }
 
 impl Object for Cube {
@@ -124,6 +138,24 @@ impl Object for Cube {
 
   fn ray_intersection(&self, _ray: Ray) -> Option<f32> {
     unimplemented!()
+  }
+
+  fn can_generate_points_cloud(&self) -> bool { true }
+
+  fn generate_points_cloud(&self) -> Option<PointsCloud> {
+    let points = self.get_points_list();
+    return Some(PointsCloud::new(format!("{}_points", self.name), points, vec![]));
+  }
+
+  fn generate_points_cloud_with_inner_samples(&self, inner_samples: u32) -> Option<PointsCloud> {
+    let points = self.get_points_list();
+    let mut inner_points = vec![];
+
+    for _ in 0..inner_samples {
+      inner_points.push(Vec3::new(rand::random(), rand::random(), rand::random()) - Vec3::ONE * 0.5);
+    }
+
+    return Some(PointsCloud::new(format!("{}_points", self.name), points, inner_points));
   }
 }
 

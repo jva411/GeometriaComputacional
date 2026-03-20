@@ -11,6 +11,8 @@ pub struct PointsCloud {
   pub name: String,
 
   pub points: Vec<Vec3>,
+  pub inner_points: Vec<Vec3>,
+  pub indices: Option<Vec<[u32; 3]>>,
 
   pub transform: Transform,
   pub material: Material,
@@ -20,17 +22,19 @@ pub struct PointsCloud {
 }
 
 impl PointsCloud {
-  pub fn new(name: String, points: Vec<Vec3>) -> Self {
-    let mut material = Material::default();
-    material.diffuse = Vec3::new(0.0, 1.0, 0.0);
+  pub fn new(name: String, points: Vec<Vec3>, inner_points: Vec<Vec3>) -> Self {
+    let material = Material::default();
     let vao = VAO::new();
     let vbo = VBO::new();
     vao.bind();
     vbo.bind();
 
     let color = material.diffuse;
+    let inner_points_color = Vec3::new(0.0, 1.0, 0.0);
     let vertex_data = points.iter()
       .flat_map(|point| vec![point.x, point.y, point.z, color.x, color.y, color.z])
+      .chain(inner_points.iter()
+        .flat_map(|point| vec![point.x, point.y, point.z, inner_points_color.x, inner_points_color.y, inner_points_color.z]))
       .collect::<Vec<f32>>();
 
     vbo.send_data(&vertex_data);
@@ -42,6 +46,8 @@ impl PointsCloud {
       id: Uuid::new_v4(),
       name: name,
       points: points,
+      inner_points: inner_points,
+      indices: None,
       transform: Transform::default(),
       material,
       vao,
@@ -54,6 +60,8 @@ impl PointsCloud {
     let color = self.material.diffuse;
     let vertex_data = self.points.iter()
       .flat_map(|point| vec![point.x, point.y, point.z, color.x, color.y, color.z])
+      .chain(self.inner_points.iter()
+        .flat_map(|point| vec![point.x, point.y, point.z, color.x, color.y, color.z]))
       .collect::<Vec<f32>>();
 
     self.vbo.update_data(0, &vertex_data);
@@ -72,8 +80,10 @@ impl PointsCloud {
       .map(|pvec3| Vec3::new(pvec3.x, pvec3.y, pvec3.z))
       .collect::<Vec<Vec3>>();
 
-    let mut cloud = PointsCloud::new(format!("{}_convex_hull", self.name).to_string(), points);
+    let mut cloud = PointsCloud::new(format!("{}_convex_hull", self.name).to_string(), points, vec![]);
+    cloud.transform = self.transform.clone();
     cloud.material.diffuse = Vec3::new(1.0, 0.0, 0.0);
+    cloud.indices = Some(indices);
     cloud.update_opengl();
     return cloud;
   }
@@ -97,12 +107,12 @@ impl Object for PointsCloud {
     model_transform.send_to_program(&program);
 
     unsafe {
-      gl::DrawArrays(gl::POINTS, 0, self.points.len() as i32);
+      gl::DrawArrays(gl::POINTS, 0, self.points.len() as i32 + self.inner_points.len() as i32);
     }
   }
 
   fn clone(&self) -> Self {
-    let mut points_cloud = PointsCloud::new(self.name.clone(), self.points.clone());
+    let mut points_cloud = PointsCloud::new(self.name.clone(), self.points.clone(), self.inner_points.clone());
     points_cloud.transform = self.transform.clone();
     points_cloud.material = self.material.clone();
     return points_cloud;

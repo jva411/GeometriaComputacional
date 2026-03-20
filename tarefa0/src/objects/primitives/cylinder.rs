@@ -5,7 +5,7 @@ use core::f32;
 use glam::{Vec3, Vec3Swizzles};
 use uuid::Uuid;
 
-use crate::{implement_partial_Object, implement_transformable, objects::object::{Object, ObjectType}, opengl::{ebo::EBO, program::Program, vao::VAO, vbo::VBO}, utils::{core::SIZE_F32, material::Material, ray::Ray, transform::Transform}};
+use crate::{implement_partial_Object, implement_transformable, objects::{geometry::points_cloud::PointsCloud, object::{Object, ObjectType}}, opengl::{ebo::EBO, program::Program, vao::VAO, vbo::VBO}, utils::{core::SIZE_F32, material::Material, ray::Ray, transform::Transform}};
 
 
 pub struct Cylinder {
@@ -23,7 +23,7 @@ pub struct Cylinder {
   pub vbo: VBO,
   pub ebo: EBO,
 
-  _vertices: Vec<Vec3>,
+  vertices: Vec<Vec3>,
   indices: Vec<usize>,
 }
 
@@ -143,7 +143,7 @@ impl Cylinder {
       vao,
       vbo,
       ebo,
-      _vertices: vertices,
+      vertices,
       indices,
     }
   }
@@ -207,6 +207,38 @@ impl Object for Cylinder {
     }
 
     return Some(t);
+  }
+
+  fn contains_point(&self, point: Vec3) -> bool {
+    let half_height = self.height * 0.5;
+    return point.y >= -half_height
+      && point.y <= half_height
+      && point.x * point.x + point.z * point.z <= self.radius * self.radius;
+  }
+
+  fn can_generate_points_cloud(&self) -> bool { true }
+
+  fn generate_points_cloud(&self) -> Option<PointsCloud> {
+    let points = self.vertices.clone();
+    return Some(PointsCloud::new(format!("{}_points", self.name), points, vec![]));
+  }
+
+  fn generate_points_cloud_with_inner_samples(&self, inner_samples: u32) -> Option<PointsCloud> {
+    let points = self.vertices.clone();
+    let mut inner_points = vec![];
+
+    for _ in 0..inner_samples {
+      let mut point = (Vec3::new(rand::random(), rand::random(), rand::random()) * 2.0 - Vec3::ONE)
+        * Vec3::new(self.radius, self.height, self.radius);
+
+      while !self.contains_point(point) {
+        point = (Vec3::new(rand::random(), rand::random(), rand::random()) * 2.0 - Vec3::ONE)
+          * Vec3::new(self.radius, self.height, self.radius);
+      }
+      inner_points.push(point);
+    }
+
+    return Some(PointsCloud::new(format!("{}_points", self.name), points, inner_points));
   }
 }
 

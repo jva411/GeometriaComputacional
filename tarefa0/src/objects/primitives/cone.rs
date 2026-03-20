@@ -4,7 +4,7 @@ use core::f32;
 use glam::Vec3;
 use uuid::Uuid;
 
-use crate::{implement_partial_Object, implement_transformable, objects::object::{Object, ObjectType}, opengl::{ebo::EBO, program::Program, vao::VAO, vbo::VBO}, utils::{core::SIZE_F32, material::Material, ray::Ray, transform::Transform}};
+use crate::{implement_partial_Object, implement_transformable, objects::{geometry::points_cloud::PointsCloud, object::{Object, ObjectType}}, opengl::{ebo::EBO, program::Program, vao::VAO, vbo::VBO}, utils::{core::SIZE_F32, material::Material, ray::Ray, transform::Transform}};
 
 pub struct Cone {
   pub id: Uuid,
@@ -21,6 +21,7 @@ pub struct Cone {
   pub vbo: VBO,
   pub ebo: EBO,
 
+  vertices: Vec<Vec3>,
   indices: Vec<usize>,
 }
 
@@ -109,6 +110,7 @@ impl Cone {
       vao,
       vbo,
       ebo,
+      vertices,
       indices,
     }
   }
@@ -147,6 +149,41 @@ impl Object for Cone {
 
   fn ray_intersection(&self, _ray: Ray) -> Option<f32> {
     unimplemented!()
+  }
+
+  fn contains_point(&self, point: Vec3) -> bool {
+    let half_height = self.height / 2.0;
+    if point.y > half_height || point.y < -half_height {
+      return false;
+    }
+
+    let radius_at_y = self.radius * (self.height - (point.y + 0.5)) / self.height;
+    return point.x * point.x + point.z * point.z <= radius_at_y * radius_at_y;
+  }
+
+  fn can_generate_points_cloud(&self) -> bool { true }
+
+  fn generate_points_cloud(&self) -> Option<PointsCloud> {
+    let points = self.vertices.clone();
+    return Some(PointsCloud::new(format!("{}_points", self.name), points, vec![]));
+  }
+
+  fn generate_points_cloud_with_inner_samples(&self, inner_samples: u32) -> Option<PointsCloud> {
+    let points = self.vertices.clone();
+    let mut inner_points = vec![];
+
+    for _ in 0..inner_samples {
+      let mut point = (Vec3::new(rand::random(), rand::random(), rand::random()) * 2.0 - Vec3::ONE)
+        * Vec3::new(self.radius, self.height, self.radius);
+
+      while !self.contains_point(point) {
+        point = (Vec3::new(rand::random(), rand::random(), rand::random()) * 2.0 - Vec3::ONE)
+          * Vec3::new(self.radius, self.height, self.radius);
+      }
+      inner_points.push(point);
+    }
+
+    return Some(PointsCloud::new(format!("{}_points", self.name), points, inner_points));
   }
 }
 

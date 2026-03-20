@@ -1,10 +1,11 @@
 use std::{any::Any, cell::RefCell, rc::Rc};
 
+use glam::Vec3;
 use uuid::Uuid;
 
-use crate::{opengl::{program::Program, renderer::ProgramType}, utils::{material::Material, ray::Ray, transform::{Transform, Transformable}}};
+use crate::{objects::geometry::points_cloud::PointsCloud, opengl::{program::Program, renderer::ProgramType}, utils::{material::Material, ray::Ray, transform::{Transform, Transformable}}};
 
-#[allow(dead_code)]
+#[allow(dead_code, unused_variables)]
 pub trait Object: Transformable {
   fn get_id(&self) -> Uuid;
   fn get_name(&self) -> String;
@@ -26,6 +27,11 @@ pub trait Object: Transformable {
   fn clone_rc_ref(&self) -> Rc<RefCell<dyn Object>>;
 
   fn ray_intersection(&self, ray: Ray) -> Option<f32>;
+  fn contains_point(&self, point: Vec3) -> bool { unimplemented!() }
+
+  fn can_generate_points_cloud(&self) -> bool { false }
+  fn generate_points_cloud(&self) -> Option<PointsCloud> { None }
+  fn generate_points_cloud_with_inner_samples(&self, inner_samples: u32) -> Option<PointsCloud> { None }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

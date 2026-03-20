@@ -5,7 +5,7 @@ use glam::Vec3;
 use rfd::FileDialog;
 use uuid::Uuid;
 
-use crate::{objects::{object::{Object, ObjectType}, primitives::{cone::Cone, cube::Cube, cylinder::Cylinder, sphere::Sphere}}, scene::{scene::{Scene, SceneSelectedObject}, ui::ui::{CreatingObject, SelectedObject, UICommand, UIManager}, window::Window}};
+use crate::{objects::{geometry::points_cloud::PointsCloud, object::{Object, ObjectType}, primitives::{cone::Cone, cube::Cube, cylinder::Cylinder, sphere::Sphere}}, scene::{scene::{Scene, SceneSelectedObject}, ui::ui::{CreatingObject, CreatingObjectType, SelectedObject, UICommand, UIManager}, window::Window}};
 
 
 #[derive(Clone, Debug)]
@@ -32,7 +32,6 @@ impl Default for NewObjectProperties {
 }
 
 impl Window {
-
   pub fn create_object(props: NewObjectProperties) -> Rc<RefCell<dyn Object>> {
     match props.primitive {
       ObjectType::Cube => Rc::new(RefCell::new(Cube::new(props.name))),
@@ -62,10 +61,50 @@ impl Window {
     self.select_object(SelectedObject::Object(new_object_id));
   }
 
+  pub fn create_points_cloud_from_object(&mut self, selected_id: Uuid) {
+    let object = self.scene.objects_by_id.get(&selected_id);
+    if object.is_none() {
+      return
+    }
+
+    let object = object.unwrap().clone();
+    let object = object.borrow();
+    let n_samples = 1000;
+    let cloud = object.generate_points_cloud_with_inner_samples(n_samples);
+    if cloud.is_none() {
+      return
+    }
+
+    let cloud = cloud.unwrap();
+    let cloud_id = cloud.get_id();
+    self.scene.add_object(Rc::new(RefCell::new(cloud)));
+    self.select_object(SelectedObject::Object(cloud_id));
+  }
+
+  pub fn create_convex_hull_from_points_cloud(&mut self, selected_id: Uuid) {
+    let object = self.scene.objects_by_id.get(&selected_id);
+    if object.is_none() {
+      return
+    }
+
+    let object = object.unwrap().clone();
+    let object = object.borrow();
+    if object.get_type() != ObjectType::PointsCloud {
+      return
+    }
+
+    let cloud = object.as_any().downcast_ref::<PointsCloud>().unwrap();
+    let hull = cloud.convex_hull();
+    let hull_id = hull.get_id();
+    self.scene.add_object(Rc::new(RefCell::new(hull)));
+    self.select_object(SelectedObject::Object(hull_id));
+  }
+
   pub fn draw_objects_list(ui: &mut Ui, ui_manager: &mut UIManager, scene: &mut Scene) {
     if ui.button("Add Object").clicked() {
       ui_manager.is_add_object_window_open = true;
       ui_manager.creating_object = CreatingObject::default();
+      ui_manager.creating_object_type = CreatingObjectType::Object;
     }
     ui.separator();
 
@@ -162,6 +201,19 @@ impl Window {
     });
     ui.label("Shininess: ");
     ui.add(egui::DragValue::new(&mut material.shininess).range(0.0..=256.0).speed(0.1));
+    ui.separator();
+
+    if object.can_generate_points_cloud() {
+      if ui.button("Points Cloud").clicked() {
+        ui_manager.commands_queue.push(UICommand::CreatePointsCloud(SelectedObject::Object(selected_id)));
+      }
+    }
+
+    if object.get_type() == ObjectType::PointsCloud {
+      if ui.button("Convex Hull").clicked() {
+        ui_manager.commands_queue.push(UICommand::CreateConvexHull(SelectedObject::Object(selected_id)));
+      }
+    }
   }
 }
 
