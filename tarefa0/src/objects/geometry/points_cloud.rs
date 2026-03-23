@@ -10,7 +10,7 @@ pub struct PointsCloud {
 
   pub points: Vec<Vec3>,
   pub inner_points: Vec<Vec3>,
-  pub indices: Option<Vec<[u32; 3]>>,
+  pub indices: Option<Vec<u32>>,
 
   pub transform: Transform,
   pub material: Material,
@@ -81,7 +81,9 @@ impl PointsCloud {
     let mut cloud = PointsCloud::new(format!("{}_convex_hull", self.name).to_string(), points, vec![]);
     cloud.transform = self.transform.clone();
     cloud.material.diffuse = Vec3::new(1.0, 0.0, 0.0);
-    cloud.indices = Some(indices);
+    cloud.indices = Some(indices.iter()
+      .flat_map(|i| vec![i[0], i[1], i[2]])
+      .collect::<Vec<u32>>());
     cloud.update_opengl();
     return cloud;
   }

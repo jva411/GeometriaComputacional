@@ -38,7 +38,7 @@ impl Window {
       ObjectType::Sphere => Rc::new(RefCell::new(Sphere::new(props.name, props.radius, props.subdivisions))),
       ObjectType::Cylinder => Rc::new(RefCell::new(Cylinder::new(props.name, props.radius, props.height, props.subdivisions))),
       ObjectType::Cone => Rc::new(RefCell::new(Cone::new(props.name, props.radius, props.height, props.subdivisions))),
-      ObjectType::Mesh => Rc::new(RefCell::new(Mesh::new(props.name, props.obj_path.unwrap()))),
+      ObjectType::Mesh => Rc::new(RefCell::new(Mesh::from_obj_file(props.name, props.obj_path.unwrap(), props.radius))),
       _ => unimplemented!("ObjectType::{:?} creation not implemented yet", props.primitive),
     }
   }
@@ -99,6 +99,38 @@ impl Window {
     let hull_id = hull.get_id();
     self.scene.add_object(Rc::new(RefCell::new(hull)));
     self.select_object(SelectedObject::Object(hull_id));
+  }
+
+  pub fn triangulate_points_cloud(&mut self, selected_id: Uuid) {
+    let object = self.scene.objects_by_id.get(&selected_id);
+    if object.is_none() {
+      return
+    }
+
+    let object = object.unwrap().clone();
+    let object = object.borrow();
+    if object.get_type() != ObjectType::PointsCloud {
+      return
+    }
+
+    let cloud = object.as_any().downcast_ref::<PointsCloud>().unwrap();
+    let indices = &cloud.indices;
+    if indices.is_none() {
+      return
+    }
+
+    let indices = indices.clone().unwrap();
+    let mut mesh = Mesh::new(
+      format!("{}_triangulated", cloud.name),
+      cloud.points.clone(),
+      vec![],
+      indices,
+    );
+
+    mesh.transform = cloud.transform.clone();
+    let mesh_id = mesh.get_id();
+    self.scene.add_object(Rc::new(RefCell::new(mesh)));
+    self.select_object(SelectedObject::Object(mesh_id));
   }
 
   pub fn draw_objects_list(ui: &mut Ui, ui_manager: &mut UIManager, scene: &mut Scene) {
@@ -211,8 +243,15 @@ impl Window {
     }
 
     if object.get_type() == ObjectType::PointsCloud {
-      if ui.button("Convex Hull").clicked() {
-        ui_manager.commands_queue.push(UICommand::CreateConvexHull(SelectedObject::Object(selected_id)));
+      let cloud = object.as_any().downcast_ref::<PointsCloud>().unwrap();
+      if cloud.indices.is_none() {
+        if ui.button("Convex Hull").clicked() {
+          ui_manager.commands_queue.push(UICommand::CreateConvexHull(SelectedObject::Object(selected_id)));
+        }
+      } else {
+        if ui.button("Triangulate").clicked() {
+          ui_manager.commands_queue.push(UICommand::TriangulatePointsCloud(SelectedObject::Object(selected_id)));
+        }
       }
     }
   }

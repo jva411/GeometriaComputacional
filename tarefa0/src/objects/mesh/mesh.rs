@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use glam::Vec3;
 use uuid::Uuid;
 
-use crate::{implement_partial_Object, implement_transformable, objects::object::{Object, ObjectType}, opengl::{ebo::EBO, program::Program, vao::VAO, vbo::VBO}, utils::{material::Material, ray::Ray, transform::Transform}};
+use crate::{implement_partial_Object, implement_transformable, objects::{geometry::points_cloud::PointsCloud, object::{Object, ObjectType}}, opengl::{ebo::EBO, program::Program, vao::VAO, vbo::VBO}, utils::{core::SIZE_F32, material::Material, ray::Ray, transform::Transform, vector::calculate_normals}};
 
 pub struct Mesh {
   pub id: Uuid,
@@ -22,7 +22,52 @@ pub struct Mesh {
 }
 
 impl Mesh {
-  pub fn new(name: String, file_path: PathBuf) -> Self {
+  pub fn new(name: String, vertices: Vec<Vec3>, normals: Vec<Vec3>, faces: Vec<u32>) -> Self {
+    let normals = if normals.is_empty() {
+      calculate_normals(&vertices, &faces)
+    } else {
+      normals
+    };
+
+    let vao = VAO::new();
+    let vbo = VBO::new();
+    let ebo = EBO::new();
+
+    vao.bind();
+    vbo.bind();
+    ebo.bind();
+    vbo.send_data(
+      &vertices
+        .iter()
+        .zip(normals.iter())
+        .map(|(v, n)| [v.x, v.y, v.z, n.x, n.y, n.z])
+        .flatten()
+        .collect::<Vec<f32>>(),
+    );
+    ebo.send_data(&faces);
+
+    let stride = 6 * SIZE_F32;
+    vao.add_attribute(0, stride, 0);
+    vao.add_attribute(1, stride, 3 * SIZE_F32);
+
+    Self {
+      id: Uuid::new_v4(),
+      name,
+
+      transform: Transform::default(),
+      material: Material::default(),
+
+      vertices,
+      normals,
+      faces,
+
+      vao,
+      vbo,
+      ebo,
+    }
+  }
+
+  pub fn from_obj_file(name: String, file_path: PathBuf, scale: f32) -> Self {
     let (models, _) = tobj::load_obj(
       file_path,
       &tobj::LoadOptions {
@@ -58,41 +103,14 @@ impl Mesh {
       faces.extend(mesh.indices.iter().map(|i| *i as u32 + vertex_offset));
     }
 
-    let vao = VAO::new();
-    let vbo = VBO::new();
-    let ebo = EBO::new();
-
-    vao.bind();
-    vbo.bind();
-    ebo.bind();
-    vbo.send_data(
-      &vertices
-        .iter()
-        .zip(normals.iter())
-        .map(|(v, n)| [v.x, v.y, v.z, n.x, n.y, n.z])
-        .flatten()
-        .collect::<Vec<f32>>(),
-    );
-    ebo.send_data(&faces);
-
-    vao.add_attribute(0, 3, 0);
-    vao.add_attribute(1, 3, 3);
-
-    Self {
-      id: Uuid::new_v4(),
-      name,
-
-      transform: Transform::default(),
-      material: Material::default(),
-
-      vertices,
-      normals,
-      faces,
-
-      vao,
-      vbo,
-      ebo,
+    if normals.is_empty() {
+      normals = calculate_normals(&vertices, &faces);
     }
+
+    let mut mesh = Mesh::new(name, vertices, normals, faces);
+    mesh.transform.scale3f(scale, scale, scale);
+
+    return mesh;
   }
 }
 
@@ -120,12 +138,27 @@ impl Object for Mesh {
     }
   }
 
-  fn clone(&self) -> Self where Self: Sized {
+  fn clone(&self) -> Self {
+    let mut mesh = Mesh::new(self.name.clone(), self.vertices.clone(), self.normals.clone(), self.faces.clone());
+    mesh.transform = self.transform.clone();
+    mesh.material = self.material.clone();
+    return mesh;
+  }
+
+  fn ray_intersection(&self, _ray: Ray) -> Option<f32> {
     todo!()
   }
 
-  fn ray_intersection(&self, ray: Ray) -> Option<f32> {
-    todo!()
+  fn can_generate_points_cloud(&self) -> bool { true }
+  fn generate_points_cloud(&self) -> Option<PointsCloud> {
+    let points = self.vertices.clone();
+    let mut cloud = PointsCloud::new(format!("{}_points", self.name), points, vec![]);
+    cloud.transform = self.transform.clone();
+    return Some(cloud);
+  }
+
+  fn generate_points_cloud_with_inner_samples(&self, _inner_samples: u32) -> Option<PointsCloud> {
+    return self.generate_points_cloud();
   }
 }
 

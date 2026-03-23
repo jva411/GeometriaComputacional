@@ -142,7 +142,9 @@ impl Object for Cube {
 
   fn generate_points_cloud(&self) -> Option<PointsCloud> {
     let points = self.get_points_list();
-    return Some(PointsCloud::new(format!("{}_points", self.name), points, vec![]));
+    let mut cloud = PointsCloud::new(format!("{}_points", self.name), points, vec![]);
+    cloud.transform = self.transform.clone();
+    return Some(cloud);
   }
 
   fn generate_points_cloud_with_inner_samples(&self, inner_samples: u32) -> Option<PointsCloud> {
@@ -153,7 +155,9 @@ impl Object for Cube {
       inner_points.push(Vec3::new(rand::random(), rand::random(), rand::random()) - Vec3::ONE * 0.5);
     }
 
-    return Some(PointsCloud::new(format!("{}_points", self.name), points, inner_points));
+    let mut cloud = PointsCloud::new(format!("{}_points", self.name), points, inner_points);
+    cloud.transform = self.transform.clone();
+    return Some(cloud);
   }
 }
 

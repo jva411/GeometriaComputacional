@@ -218,7 +218,9 @@ impl Object for Cylinder {
 
   fn generate_points_cloud(&self) -> Option<PointsCloud> {
     let points = self.vertices.clone();
-    return Some(PointsCloud::new(format!("{}_points", self.name), points, vec![]));
+    let mut cloud = PointsCloud::new(format!("{}_points", self.name), points, vec![]);
+    cloud.transform = self.transform.clone();
+    return Some(cloud);
   }
 
   fn generate_points_cloud_with_inner_samples(&self, inner_samples: u32) -> Option<PointsCloud> {
@@ -236,7 +238,9 @@ impl Object for Cylinder {
       inner_points.push(point);
     }
 
-    return Some(PointsCloud::new(format!("{}_points", self.name), points, inner_points));
+    let mut cloud = PointsCloud::new(format!("{}_points", self.name), points, inner_points);
+    cloud.transform = self.transform.clone();
+    return Some(cloud);
   }
 }
 

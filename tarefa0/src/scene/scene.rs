@@ -110,11 +110,13 @@ impl Scene {
   }
 
   pub fn remove_object(&mut self, id: Uuid) {
-    if self.objects_by_id.remove(&id).is_none() {
+    let removed_object = self.objects_by_id.remove(&id);
+    if removed_object.is_none() {
       return
     };
 
-    if let Some(objects) = self.objects_by_program.get_mut(&self.objects_by_id.get(&id).unwrap().borrow().get_program_type()) {
+    let removed_object = removed_object.unwrap();
+    if let Some(objects) = self.objects_by_program.get_mut(&removed_object.borrow().get_program_type()) {
       if let Some(index) = objects.iter().position(|object| object.borrow().get_id() == id) {
         objects.remove(index);
       }

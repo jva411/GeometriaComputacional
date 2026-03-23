@@ -1,5 +1,7 @@
 use std::{cell::RefCell, rc::Rc};
 
+use glam::Vec3;
+
 use crate::{implement_partial_gizmo, objects::{gizmo::gizmo::{Gizmo, GizmoType}, grid::axes::Axes}, opengl::program::Program, utils::{ray::Ray, transform::Transformable}};
 
 #[allow(dead_code)]
@@ -23,12 +25,15 @@ impl Gizmo for Translate {
   implement_partial_gizmo!();
 
   fn draw(&self, program: &Program) {
-    let transform = self.transformable.borrow().get_transform().clone();
+    let mut transform = self.transformable.borrow().get_transform().clone();
+    transform.scale = Vec3::ONE;
     self.axes.draw(program, Some(transform));
   }
 
   fn ray_intersection(&self, ray: Ray) -> Option<glam::Vec3> {
-    self.axes.ray_intersection(ray, &self.transformable.borrow().get_transform())
+    let mut transform = self.transformable.borrow().get_transform().clone();
+    transform.scale = Vec3::ONE;
+    self.axes.ray_intersection(ray, &transform)
   }
 }
 
