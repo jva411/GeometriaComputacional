@@ -8,9 +8,9 @@ mod utils;
 use crate::scene::window::Window;
 
 
-const SCENE_WIDTH: u32 = 800;
+const SCENE_WIDTH: u32 = 1280;
 const UI_WIDTH: u32 = 350;
-const WINDOW_HEIGHT: u32 = 600;
+const WINDOW_HEIGHT: u32 = 850;
 const WINDOW_WIDTH: u32 = SCENE_WIDTH + UI_WIDTH;
 
 

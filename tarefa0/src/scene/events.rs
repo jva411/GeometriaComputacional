@@ -3,7 +3,7 @@ use std::{cell::RefCell, f32, rc::Rc};
 use glam::{Vec2, Vec3};
 use sdl2::{event::Event, keyboard::{Keycode, Scancode}, mouse::MouseButton};
 
-use crate::{objects::{gizmo::gizmo::Gizmo, object::Object, primitives::planes::square::Square}, scene::window::Window, utils::transform::Transformable};
+use crate::{objects::{gizmo::gizmo::Gizmo, object::Object, primitives::planes::square::Square}, scene::{ui::ui::UICommand, window::Window}, utils::transform::Transformable};
 
 pub enum EventResult {
   None,
@@ -83,8 +83,11 @@ impl Window {
           self.sdl.context.mouse().set_relative_mouse_mode(false);
           mouse.warp_mouse_in_window(&self.sdl.window, self.width as i32/ 2, self.height as i32 / 2);
         }
-      },
-      _ => {},
+      }
+      Keycode::P => {
+        self.ui_manager.commands_queue.push(UICommand::ScreenShot);
+      }
+      _ => {}
     };
 
     return EventResult::None;

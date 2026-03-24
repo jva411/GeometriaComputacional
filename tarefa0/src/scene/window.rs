@@ -43,7 +43,8 @@ impl Window {
   pub fn new(title: &'static str, width: u32, height: u32, canvas_width: u32) -> Self {
     let (sdl, egui) = Window::load_gl(title, width, height);
     let renderer = Rc::new(RefCell::new(Renderer::new().unwrap()));
-    let scene = Scene::new(Camera::new(), Rc::clone(&renderer));
+    let camera = Camera::new(45.0, canvas_width as f32 / height as f32, 0.1, 100.0);
+    let scene = Scene::new(camera, Rc::clone(&renderer));
     let events_manager = EventsManager::new();
 
     let window = Window {

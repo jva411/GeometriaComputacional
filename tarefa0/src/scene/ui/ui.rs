@@ -1,6 +1,8 @@
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::RefCell, fs::create_dir_all, path::PathBuf, rc::Rc};
 
+use chrono::Local;
 use egui::{vec2, ComboBox, FullOutput, SidePanel, Ui, Window as EguiWindow};
+use image::{ImageBuffer, imageops};
 use uuid::Uuid;
 
 use crate::{objects::gizmo::translate::Translate, scene::{scene::{Scene, SceneSelectedObject}, ui::{light_ui::NewLightProperties, object_ui::NewObjectProperties}, window::Window}};
@@ -13,6 +15,7 @@ pub enum UITab {
 
 #[derive(Clone)]
 pub enum UICommand {
+  ScreenShot,
   CreateObject(CreatingObject),
   DeleteObject(SelectedObject),
   CloneObject(SelectedObject),
@@ -214,6 +217,21 @@ impl Window {
     }
   }
 
+  fn screenshot(&self) {
+    let pixels = self.scene.screenshot(self.canvas_width, self.height);
+    let image = ImageBuffer::<image::Rgb<u8>, _>::from_raw(
+      self.canvas_width,
+      self.height,
+      pixels,
+    ).expect("Buffer creation failed");
+    let image = imageops::flip_vertical(&image);
+    let now = Local::now();
+    let filename = format!("screenshot_{}.png", now.format("%Y-%m-%d_%H-%M-%S").to_string());
+    let path = PathBuf::from("screenshots").join(filename);
+    let _ = create_dir_all("screenshots");
+    image.save(path).unwrap();
+  }
+
   pub fn process_ui_commands(&mut self) {
     let commands: Vec<UICommand> = self.ui_manager.commands_queue.drain(..).collect();
 
@@ -274,6 +292,10 @@ impl Window {
             SelectedObject::Object(id) => { self.triangulate_points_cloud(id); }
             _ => {}
           }
+        }
+
+        UICommand::ScreenShot => {
+          self.screenshot();
         }
       }
     }

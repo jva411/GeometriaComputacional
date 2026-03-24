@@ -156,6 +156,10 @@ impl Scene {
 
     return None;
   }
+
+  pub fn screenshot(&self, width: u32, height: u32) -> Vec<u8> {
+    return self.renderer.borrow().read_pixels(width, height);
+  }
 }
 
 #[derive(Clone)]

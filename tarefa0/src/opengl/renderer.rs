@@ -1,4 +1,4 @@
-use std::{fs::File, rc::Rc};
+use std::{ffi::c_void, fs::File, rc::Rc};
 
 use crate::opengl::{program::Program, shaders::Shaders};
 
@@ -58,5 +58,23 @@ impl Renderer {
       gl::Enable(gl::DEPTH_TEST);
       gl::Enable(gl::CULL_FACE);
     }
+  }
+
+  pub fn read_pixels(&self, width: u32, height: u32) -> Vec<u8> {
+    let size = (width * height * 3) as usize;
+    let mut pixels: Vec<u8> = Vec::with_capacity(size as usize);
+    pixels.resize(size as usize, 0);
+    unsafe {
+      gl::ReadPixels(
+        0,
+        0,
+        width as i32,
+        height as i32,
+        gl::RGB,
+        gl::UNSIGNED_BYTE,
+        pixels.as_mut_ptr() as *mut c_void
+      );
+    }
+    return pixels;
   }
 }

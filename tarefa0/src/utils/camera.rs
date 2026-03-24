@@ -44,16 +44,16 @@ pub struct Camera {
 
 #[allow(dead_code)]
 impl Camera {
-  pub fn new() -> Self {
+  pub fn new(fov: f32, aspect: f32, near: f32, far: f32) -> Self {
     let mut transform = CameraTransform::new();
     transform.translate(-4.0, 0.0, 1.0);
 
     Camera {
       transform,
-      fov: 45.0,
-      aspect: 8.0/6.0,
-      near: 0.01,
-      far: 100.0,
+      fov,
+      aspect,
+      near,
+      far,
       projection: Projection::Perspective,
     }
   }
