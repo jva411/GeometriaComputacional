@@ -1,9 +1,11 @@
 use core::f32;
 
 use glam::Vec3;
+use parry3d::shape::Cone as ParryCone;
 use uuid::Uuid;
 
-use crate::{implement_partial_Object, implement_transformable, objects::{geometry::points_cloud::PointsCloud, object::{Object, ObjectType}}, opengl::{ebo::EBO, program::Program, vao::VAO, vbo::VBO}, utils::{core::SIZE_F32, material::Material, ray::Ray, transform::Transform}};
+
+use crate::{implement_partial_Object, implement_transformable, objects::{geometry::points_cloud::PointsCloud, object::{Object, ObjectType}}, opengl::{ebo::EBO, program::Program, vao::VAO, vbo::VBO}, utils::{core::SIZE_F32, material::Material, ray::Ray, transform::Transform, vector::pvec3_vec_to_vec3_vec}};
 
 pub struct Cone {
   pub id: Uuid,
@@ -113,6 +115,20 @@ impl Cone {
       indices,
     }
   }
+
+  fn get_vertices(&self, use_parry: bool) -> Vec<Vec3> {
+    if use_parry {
+      let parry_cone = ParryCone::new(self.height / 2.0, self.radius);
+      let (points, _) = parry_cone.to_trimesh(self.subdivisions);
+      return pvec3_vec_to_vec3_vec(&points);
+    }
+
+    let mut points = Vec::with_capacity(self.vertices.len() / 2);
+    for i in 0..self.vertices.len() / 2 {
+      points.push(self.vertices[i * 2]);
+    }
+    return points;
+  }
 }
 
 impl Object for Cone {
@@ -162,15 +178,15 @@ impl Object for Cone {
 
   fn can_generate_points_cloud(&self) -> bool { true }
 
-  fn generate_points_cloud(&self) -> Option<PointsCloud> {
-    let points = self.vertices.clone();
+  fn generate_points_cloud(&self, use_parry: bool) -> Option<PointsCloud> {
+    let points = self.get_vertices(use_parry);
     let mut cloud = PointsCloud::new(format!("{}_points", self.name), points, vec![]);
     cloud.transform = self.transform.clone();
     return Some(cloud);
   }
 
-  fn generate_points_cloud_with_inner_samples(&self, inner_samples: u32) -> Option<PointsCloud> {
-    let points = self.vertices.clone();
+  fn generate_points_cloud_with_inner_samples(&self, inner_samples: u32, use_parry: bool) -> Option<PointsCloud> {
+    let points = self.get_vertices(use_parry);
     let mut inner_points = vec![];
 
     for _ in 0..inner_samples {

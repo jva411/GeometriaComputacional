@@ -30,8 +30,8 @@ pub trait Object: Transformable {
   fn contains_point(&self, point: Vec3) -> bool { unimplemented!() }
 
   fn can_generate_points_cloud(&self) -> bool { false }
-  fn generate_points_cloud(&self) -> Option<PointsCloud> { None }
-  fn generate_points_cloud_with_inner_samples(&self, inner_samples: u32) -> Option<PointsCloud> { None }
+  fn generate_points_cloud(&self, use_parry: bool) -> Option<PointsCloud> { None }
+  fn generate_points_cloud_with_inner_samples(&self, inner_samples: u32, use_parry: bool) -> Option<PointsCloud> { None }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -1,7 +1,8 @@
 use glam::Vec3;
 use uuid::Uuid;
+use parry3d::shape::Ball as ParrySphere;
 
-use crate::{implement_partial_Object, implement_transformable, objects::{geometry::points_cloud::PointsCloud, object::{Object, ObjectType}}, opengl::{ebo::EBO, program::Program, vao::VAO, vbo::VBO}, utils::{core::SIZE_F32, material::Material, ray::Ray, transform::Transform}};
+use crate::{implement_partial_Object, implement_transformable, objects::{geometry::points_cloud::PointsCloud, object::{Object, ObjectType}}, opengl::{ebo::EBO, program::Program, vao::VAO, vbo::VBO}, utils::{core::SIZE_F32, material::Material, ray::Ray, transform::Transform, vector::pvec3_vec_to_vec3_vec}};
 
 pub struct Sphere {
   pub id: Uuid,
@@ -106,6 +107,16 @@ impl Sphere {
       indices: indices.iter().map(|i| *i as usize).collect(),
     };
   }
+
+  fn get_vertices(&self, use_parry: bool) -> Vec<Vec3> {
+    if use_parry {
+      let parry_sphere = ParrySphere::new(self.radius);
+      let (points, _) = parry_sphere.to_trimesh(self.subdivisions, self.subdivisions);
+      return pvec3_vec_to_vec3_vec(&points);
+    }
+
+    return self.vertices.clone();
+  }
 }
 
 impl Object for Sphere {
@@ -149,15 +160,15 @@ impl Object for Sphere {
 
   fn can_generate_points_cloud(&self) -> bool { true }
 
-  fn generate_points_cloud(&self) -> Option<PointsCloud> {
-    let points = self.vertices.clone();
+  fn generate_points_cloud(&self, use_parry: bool) -> Option<PointsCloud> {
+    let points = self.get_vertices(use_parry);
     let mut cloud = PointsCloud::new(format!("{}_points", self.name), points, vec![]);
     cloud.transform = self.transform.clone();
     return Some(cloud);
   }
 
-  fn generate_points_cloud_with_inner_samples(&self, inner_samples: u32) -> Option<PointsCloud> {
-    let points = self.vertices.clone();
+  fn generate_points_cloud_with_inner_samples(&self, inner_samples: u32, use_parry: bool) -> Option<PointsCloud> {
+    let points = self.get_vertices(use_parry);
     let mut inner_points = vec![];
 
     for _ in 0..inner_samples {

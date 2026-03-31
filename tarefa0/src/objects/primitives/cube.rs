@@ -1,7 +1,8 @@
 use glam::Vec3;
 use uuid::Uuid;
+use parry3d::{shape::Cuboid as ParryCuboid, math::Vec3 as PVec3};
 
-use crate::{implement_partial_Object, implement_transformable, objects::{geometry::points_cloud::PointsCloud, object::{Object, ObjectType}}, opengl::{ebo::EBO, program::Program, vao::VAO, vbo::VBO}, utils::{core::SIZE_F32, material::Material, ray::Ray, transform::Transform}};
+use crate::{implement_partial_Object, implement_transformable, objects::{geometry::points_cloud::PointsCloud, object::{Object, ObjectType}}, opengl::{ebo::EBO, program::Program, vao::VAO, vbo::VBO}, utils::{core::SIZE_F32, material::Material, ray::Ray, transform::Transform, vector::pvec3_vec_to_vec3_vec}};
 
 #[allow(dead_code)]
 pub struct Cube {
@@ -89,7 +90,13 @@ impl Cube {
     };
   }
 
-  fn get_points_list(&self) -> Vec<Vec3> {
+  fn get_vertices(&self, use_parray: bool) -> Vec<Vec3> {
+    if use_parray {
+      let parry_cube = ParryCuboid::new(PVec3::new(0.5, 0.5, 0.5));
+      let (points, _) = parry_cube.to_trimesh();
+      return pvec3_vec_to_vec3_vec(&points);
+    }
+
     return vec![
       Vec3::new(-0.5, -0.5, -0.5),
       Vec3::new( 0.5, -0.5, -0.5),
@@ -140,15 +147,15 @@ impl Object for Cube {
 
   fn can_generate_points_cloud(&self) -> bool { true }
 
-  fn generate_points_cloud(&self) -> Option<PointsCloud> {
-    let points = self.get_points_list();
+  fn generate_points_cloud(&self, use_parry: bool) -> Option<PointsCloud> {
+    let points = self.get_vertices(use_parry);
     let mut cloud = PointsCloud::new(format!("{}_points", self.name), points, vec![]);
     cloud.transform = self.transform.clone();
     return Some(cloud);
   }
 
-  fn generate_points_cloud_with_inner_samples(&self, inner_samples: u32) -> Option<PointsCloud> {
-    let points = self.get_points_list();
+  fn generate_points_cloud_with_inner_samples(&self, inner_samples: u32, use_parry: bool) -> Option<PointsCloud> {
+    let points = self.get_vertices(use_parry);
     let mut inner_points = vec![];
 
     for _ in 0..inner_samples {

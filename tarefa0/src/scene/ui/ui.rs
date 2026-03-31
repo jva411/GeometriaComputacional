@@ -19,7 +19,7 @@ pub enum UICommand {
   CreateObject(CreatingObject),
   DeleteObject(SelectedObject),
   CloneObject(SelectedObject),
-  CreatePointsCloud(SelectedObject),
+  CreatePointsCloud(SelectedObject, bool),
   CreateConvexHull(SelectedObject),
   TriangulatePointsCloud(SelectedObject),
 }
@@ -273,9 +273,9 @@ impl Window {
           }
         }
 
-        UICommand::CreatePointsCloud(selected_object) => {
+        UICommand::CreatePointsCloud(selected_object, use_parry) => {
           match selected_object {
-            SelectedObject::Object(id) => { self.create_points_cloud_from_object(id); }
+            SelectedObject::Object(id) => { self.create_points_cloud_from_object(id, use_parry); }
             _ => {}
           }
         }

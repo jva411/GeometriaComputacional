@@ -150,15 +150,15 @@ impl Object for Mesh {
   }
 
   fn can_generate_points_cloud(&self) -> bool { true }
-  fn generate_points_cloud(&self) -> Option<PointsCloud> {
+  fn generate_points_cloud(&self, _use_parry: bool) -> Option<PointsCloud> {
     let points = self.vertices.clone();
     let mut cloud = PointsCloud::new(format!("{}_points", self.name), points, vec![]);
     cloud.transform = self.transform.clone();
     return Some(cloud);
   }
 
-  fn generate_points_cloud_with_inner_samples(&self, _inner_samples: u32) -> Option<PointsCloud> {
-    return self.generate_points_cloud();
+  fn generate_points_cloud_with_inner_samples(&self, _inner_samples: u32, _use_parry: bool) -> Option<PointsCloud> {
+    return self.generate_points_cloud(_use_parry);
   }
 }
 

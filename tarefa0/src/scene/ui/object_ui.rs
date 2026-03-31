@@ -62,7 +62,7 @@ impl Window {
     self.select_object(SelectedObject::Object(new_object_id));
   }
 
-  pub fn create_points_cloud_from_object(&mut self, selected_id: Uuid) {
+  pub fn create_points_cloud_from_object(&mut self, selected_id: Uuid, use_parry: bool) {
     let object = self.scene.objects_by_id.get(&selected_id);
     if object.is_none() {
       return
@@ -71,7 +71,7 @@ impl Window {
     let object = object.unwrap().clone();
     let object = object.borrow();
     let n_samples = 1000;
-    let cloud = object.generate_points_cloud_with_inner_samples(n_samples);
+    let cloud = object.generate_points_cloud_with_inner_samples(n_samples, use_parry);
     if cloud.is_none() {
       return
     }
@@ -238,7 +238,16 @@ impl Window {
 
     if object.can_generate_points_cloud() {
       if ui.button("Points Cloud").clicked() {
-        ui_manager.commands_queue.push(UICommand::CreatePointsCloud(SelectedObject::Object(selected_id)));
+        ui_manager.commands_queue.push(UICommand::CreatePointsCloud(SelectedObject::Object(selected_id), false));
+      }
+
+      match object.get_type() {
+        ObjectType::Cone | ObjectType::Cylinder | ObjectType::Sphere | ObjectType::Cube => {
+          if ui.button("Points Cloud (Parry)").clicked() {
+            ui_manager.commands_queue.push(UICommand::CreatePointsCloud(SelectedObject::Object(selected_id), true));
+          }
+        }
+        _ => {}
       }
     }
 
@@ -264,31 +273,41 @@ impl UIManager {
       ComboBox::from_label("Select the primitive")
         .selected_text(format!("{:?}", props.primitive))
         .show_ui(ui, |ui| {
-          ui.selectable_value(
+          if ui.selectable_value(
             &mut props.primitive,
             ObjectType::Sphere,
             "Sphere",
-          );
-          ui.selectable_value(
+          ).clicked() {
+            props.name = String::from("Sphere");
+          };
+          if ui.selectable_value(
             &mut props.primitive,
             ObjectType::Cube,
             "Cube",
-          );
-          ui.selectable_value(
+          ).clicked() {
+            props.name = String::from("Cube");
+          };
+          if ui.selectable_value(
             &mut props.primitive,
             ObjectType::Cylinder,
             "Cylinder",
-          );
-          ui.selectable_value(
+          ).clicked() {
+            props.name = String::from("Cylinder");
+          };
+          if ui.selectable_value(
             &mut props.primitive,
             ObjectType::Cone,
             "Cone",
-          );
-          ui.selectable_value(
+          ).clicked() {
+            props.name = String::from("Cone");
+          };
+          if ui.selectable_value(
             &mut props.primitive,
             ObjectType::Mesh,
             "Mesh",
-          );
+          ).clicked() {
+            props.name = String::from("Mesh");
+          };
         });
 
       ui.separator();
