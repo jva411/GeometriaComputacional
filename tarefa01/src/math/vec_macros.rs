@@ -12,19 +12,46 @@ macro_rules! vec_implement_common_functions {
 }
 
 #[macro_export]
-macro_rules! vec_declare_constants {
-  () => {
-    pub const ZERO: Self = Self::splat(0.0);
-    pub const ONE: Self = Self::splat(1.0);
+macro_rules! vec_declare_constants_axis {
+  (Vec2) => {
+    pub const X: Self = Self::new(1.0, 0.0);
+    pub const Y: Self = Self::new(0.0, 1.0);
+
+    pub const NEG_X: Self = Self::new(-1.0, 0.0);
+    pub const NEG_Y: Self = Self::new(0.0, -1.0);
+  };
+
+  (Vec3) => {
     pub const X: Self = Self::new(1.0, 0.0, 0.0);
     pub const Y: Self = Self::new(0.0, 1.0, 0.0);
     pub const Z: Self = Self::new(0.0, 0.0, 1.0);
 
-    pub const NEG_ZERO: Self = Self::splat(-0.0);
-    pub const NEG_ONE: Self = Self::splat(-1.0);
     pub const NEG_X: Self = Self::new(-1.0, 0.0, 0.0);
     pub const NEG_Y: Self = Self::new(0.0, -1.0, 0.0);
     pub const NEG_Z: Self = Self::new(0.0, 0.0, -1.0);
+  };
+
+  (Vec4) => {
+    pub const X: Self = Self::new(1.0, 0.0, 0.0, 0.0);
+    pub const Y: Self = Self::new(0.0, 1.0, 0.0, 0.0);
+    pub const Z: Self = Self::new(0.0, 0.0, 1.0, 0.0);
+    pub const W: Self = Self::new(0.0, 0.0, 0.0, 1.0);
+
+    pub const NEG_X: Self = Self::new(-1.0, 0.0, 0.0, 0.0);
+    pub const NEG_Y: Self = Self::new(0.0, -1.0, 0.0, 0.0);
+    pub const NEG_Z: Self = Self::new(0.0, 0.0, -1.0, 0.0);
+    pub const NEG_W: Self = Self::new(0.0, 0.0, 0.0, -1.0);
+  };
+}
+
+#[macro_export]
+macro_rules! vec_declare_constants {
+  ($type:tt) => {
+    pub const ZERO: Self = Self::splat(0.0);
+    pub const ONE: Self = Self::splat(1.0);
+
+    pub const NEG_ZERO: Self = Self::splat(-0.0);
+    pub const NEG_ONE: Self = Self::splat(-1.0);
 
     pub const MIN: Self = Self::splat(f64::MIN);
     pub const MAX: Self = Self::splat(f64::MAX);
@@ -32,6 +59,8 @@ macro_rules! vec_declare_constants {
     pub const INFINITY: Self = Self::splat(f64::INFINITY);
     pub const NEG_INFINITY: Self = Self::splat(f64::NEG_INFINITY);
     pub const EPSILON: Self = Self::splat(f64::EPSILON);
+
+    $crate::vec_declare_constants_axis!($type);
   };
 }
 

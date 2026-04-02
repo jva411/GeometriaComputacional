@@ -1,7 +1,5 @@
 use tarefa01::{math::vec3::Vec3, sort::{merge_sort::merge_sort, quick_sort::quick_sort, selection_sort::selection_sort}};
 
-pub mod sort;
-
 pub fn check_sort<T: Ord>(array: &[T]) -> bool {
   for i in 1..array.len() {
     if array[i] < array[i - 1] {
@@ -15,7 +13,6 @@ pub fn check_sort<T: Ord>(array: &[T]) -> bool {
 fn main() {
   let n = 1000;
   let mut array = Vec::with_capacity(n);
-
   for _ in 0..n {
     array.push(rand::random_range(1..=n))
   }
@@ -88,5 +85,4 @@ fn main() {
 
   let temp = -c;
   println!("Negative C: {:?}", temp);
-
 }

@@ -32,7 +32,7 @@ impl Vec3 {
   #[inline]
   pub fn normalize(self) -> Self { self / self.length() }
 
-  vec_declare_constants!();
+  vec_declare_constants!(Vec3);
 }
 
 vec_implement_operators_overloading!(Vec3, x, y, z);

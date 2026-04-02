@@ -1,33 +1,41 @@
-pub fn quick_sort<T: PartialOrd>(array: &mut [T]) {
+pub fn quick_sort<T: PartialOrd + Clone>(array: &mut [T]) {
   let n = array.len();
   if n <= 1 {
     return;
   }
 
   let pivot_index = rand::random_range(0..n);
-  array.swap(pivot_index, n - 1);
+  let pivot = array[pivot_index].clone();
 
-  let pivot_index = partition(array);
-  let (left, right) = array.split_at_mut(pivot_index);
+  let (part_i, part_j) = partition(array, pivot);
+  let (left, right) = array.split_at_mut(part_i);
+  let (_, right) = right.split_at_mut(part_j - part_i);
 
   quick_sort(left);
   quick_sort(&mut right[1..]);
 }
 
-fn partition<T: PartialOrd>(array: &mut [T]) -> usize {
-  let len = array.len();
-  let pivot_index = len - 1;
-
+fn partition<T: PartialOrd + Clone>(array: &mut [T], pivot: T) -> (usize, usize) {
+  let mut lt = 0;
   let mut i = 0;
+  let mut gt = array.len() - 1;
 
-  for j in 0..pivot_index {
-    if array[j] <= array[pivot_index] {
-      array.swap(i, j);
+  while i <= gt {
+    if array[i] < pivot {
+      array.swap(lt, i);
+      lt += 1;
+      i += 1;
+    } else if array[i] > pivot {
+      array.swap(i, gt);
+
+      if gt == 0 {
+        break;
+      }
+      gt -= 1;
+    } else {
       i += 1;
     }
   }
 
-  array.swap(i, pivot_index);
-
-  i
+  return (lt, gt);
 }
