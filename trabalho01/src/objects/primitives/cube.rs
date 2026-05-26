@@ -1,8 +1,10 @@
+use std::collections::HashSet;
+
 use glam::Vec3;
 use uuid::Uuid;
 use parry3d::{shape::Cuboid as ParryCuboid, math::Vec3 as PVec3};
 
-use crate::{implement_partial_Object, implement_transformable, objects::{geometry::points_cloud::PointsCloud, object::{Object, ObjectType}}, opengl::{ebo::EBO, program::Program, vao::VAO, vbo::VBO}, utils::{core::SIZE_F32, material::Material, ray::Ray, transform::Transform, vector::pvec3_vec_to_vec3_vec}};
+use crate::{implement_partial_Object, implement_transformable, objects::{geometry::convex_hull::ConvexHull, mesh::mesh::Mesh, object::{Object, ObjectType}}, opengl::{ebo::EBO, program::Program, vao::VAO, vbo::VBO}, utils::{core::SIZE_F32, material::Material, transform::Transform, vector::pvec3_vec_to_vec3_vec}};
 
 #[allow(dead_code)]
 pub struct Cube {
@@ -90,7 +92,7 @@ impl Cube {
     };
   }
 
-  fn get_vertices(&self, use_parray: bool) -> Vec<Vec3> {
+  fn get_vertices(use_parray: bool) -> Vec<Vec3> {
     if use_parray {
       let parry_cube = ParryCuboid::new(PVec3::new(0.5, 0.5, 0.5));
       let (points, _) = parry_cube.to_trimesh();
@@ -107,6 +109,23 @@ impl Cube {
       Vec3::new( 0.5,  0.5,  0.5),
       Vec3::new(-0.5,  0.5,  0.5),
     ];
+  }
+
+  fn get_faces() -> Vec<u32> {
+    vec![
+      0, 2, 1,
+      0, 3, 2,
+      4, 5, 6,
+      4, 6, 7,
+      0, 1, 5,
+      0, 5, 4,
+      2, 3, 7,
+      2, 7, 6,
+      1, 2, 6,
+      1, 6, 5,
+      3, 0, 4,
+      3, 4, 7
+    ]
   }
 }
 
@@ -141,30 +160,34 @@ impl Object for Cube {
     return cube;
   }
 
-  fn ray_intersection(&self, _ray: Ray) -> Option<f32> {
-    unimplemented!()
+
+  fn can_generate_convex_hull(&self) -> bool { true }
+
+  fn convex_hull(&self, _use_parry: bool) -> Option<ConvexHull> {
+    let points = Self::get_vertices(false);
+    let faces = Self::get_faces();
+
+    let mesh = Mesh::new(self.name.clone(), points, vec![], faces);
+    let mut hull = ConvexHull::new(self.name.clone(), mesh, HashSet::from([0, 1, 2, 3, 4, 5, 6, 7]));
+    hull.transform = self.transform.clone();
+    hull.material = self.material.clone();
+    return Some(hull);
   }
 
-  fn can_generate_points_cloud(&self) -> bool { true }
+  fn convex_hull_with_inner_samples(&self, inner_samples: u32) -> Option<ConvexHull> {
+    let points = Self::get_vertices(false);
+    let faces = Self::get_faces();
 
-  fn generate_points_cloud(&self, use_parry: bool) -> Option<PointsCloud> {
-    let points = self.get_vertices(use_parry);
-    let mut cloud = PointsCloud::new(format!("{}_points", self.name), points, vec![]);
-    cloud.transform = self.transform.clone();
-    return Some(cloud);
-  }
-
-  fn generate_points_cloud_with_inner_samples(&self, inner_samples: u32, use_parry: bool) -> Option<PointsCloud> {
-    let points = self.get_vertices(use_parry);
     let mut inner_points = vec![];
-
     for _ in 0..inner_samples {
-      inner_points.push(Vec3::new(rand::random(), rand::random(), rand::random()) - Vec3::ONE * 0.5);
+      inner_points.append(&mut Self::get_vertices(false));
     }
 
-    let mut cloud = PointsCloud::new(format!("{}_points", self.name), points, inner_points);
-    cloud.transform = self.transform.clone();
-    return Some(cloud);
+    let mesh = Mesh::new(self.name.clone(), points, vec![], faces);
+    let mut hull = ConvexHull::new(self.name.clone(), mesh, HashSet::from([0, 1, 2, 3, 4, 5, 6, 7]));
+    hull.transform = self.transform.clone();
+    hull.material = self.material.clone();
+    return Some(hull);
   }
 }
 

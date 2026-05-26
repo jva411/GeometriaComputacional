@@ -20,9 +20,7 @@ pub enum UICommand {
   CreateObject(CreatingObject),
   DeleteObject(SelectedObject),
   CloneObject(SelectedObject),
-  CreatePointsCloud(SelectedObject, bool),
-  CreateConvexHull(SelectedObject),
-  // TriangulatePointsCloud(SelectedObject),
+  CreateConvexHull(SelectedObject, bool),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -327,27 +325,12 @@ impl Window {
           }
         }
 
-        UICommand::CreatePointsCloud(selected_object, use_parry) => {
+        UICommand::CreateConvexHull(selected_object, use_parry) => {
           match selected_object {
-            SelectedObject::Object(id) => { self.create_points_cloud_from_object(id, use_parry); }
+            SelectedObject::Object(id) => { self.create_convex_hull(id, use_parry); }
             _ => {}
           }
         }
-
-        UICommand::CreateConvexHull(selected_object) => {
-          match selected_object {
-            // SelectedObject::Object(id) => { self.create_convex_hull_from_points_cloud(id); }
-            SelectedObject::Object(id) => { self.create_convex_hull(id); }
-            _ => {}
-          }
-        }
-
-        // UICommand::TriangulatePointsCloud(selected_object) => {
-        //   match selected_object {
-        //     SelectedObject::Object(id) => { self.triangulate_points_cloud(id); }
-        //     _ => {}
-        //   }
-        // }
 
         UICommand::ScreenShot => {
           self.screenshot();

@@ -3,7 +3,7 @@ use std::{any::Any, cell::RefCell, rc::Rc};
 use glam::Vec3;
 use uuid::Uuid;
 
-use crate::{objects::{geometry::points_cloud::PointsCloud, mesh::mesh::Mesh}, opengl::{program::Program, renderer::ProgramType}, utils::{material::Material, ray::Ray, transform::{Transform, Transformable}}};
+use crate::{objects::geometry::{convex_hull::ConvexHull}, opengl::{program::Program, renderer::ProgramType}, utils::{material::Material, ray::Ray, transform::{Transform, Transformable}}};
 
 #[allow(dead_code, unused_variables)]
 pub trait Object: Transformable {
@@ -26,15 +26,12 @@ pub trait Object: Transformable {
   fn clone(&self) -> Self where Self: Sized;
   fn clone_rc_ref(&self) -> Rc<RefCell<dyn Object>>;
 
-  fn ray_intersection(&self, ray: Ray) -> Option<f32>;
+  fn ray_intersection(&self, ray: Ray) -> Option<f32> { None }
   fn contains_point(&self, point: Vec3) -> bool { unimplemented!() }
 
   fn can_generate_convex_hull(&self) -> bool { false }
-  fn convex_hull(&self) -> Option<Mesh> { None }
-
-  fn can_generate_points_cloud(&self) -> bool { false }
-  fn generate_points_cloud(&self, use_parry: bool) -> Option<PointsCloud> { None }
-  fn generate_points_cloud_with_inner_samples(&self, inner_samples: u32, use_parry: bool) -> Option<PointsCloud> { None }
+  fn convex_hull(&self, use_parry: bool) -> Option<ConvexHull> { None }
+  fn convex_hull_with_inner_samples(&self, inner_samples: u32) -> Option<ConvexHull> { None }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -44,9 +41,9 @@ pub enum ObjectType {
   Sphere,
   Cylinder,
   Cone,
-  Mesh,
   Square,
-  PointsCloud,
+  Mesh,
+  ConvexHull,
 }
 
 #[macro_export]

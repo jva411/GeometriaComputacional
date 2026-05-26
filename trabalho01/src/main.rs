@@ -1,11 +1,12 @@
+use crate::scene::window::Window;
+
+
+mod geometry;
 mod lights;
 mod objects;
 mod opengl;
 mod scene;
 mod utils;
-
-
-use crate::scene::window::Window;
 
 
 const SCENE_WIDTH: u32 = 1280;

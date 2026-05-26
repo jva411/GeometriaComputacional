@@ -1,10 +1,10 @@
-use std::path::PathBuf;
+use std::{collections::HashSet, path::PathBuf};
 
 use glam::Vec3;
-use parry3d::transformation::{convex_hull, vhacd::{VHACD, VHACDParameters}};
+use parry3d::transformation::{convex_hull as parry_convex_hull, vhacd::{VHACD, VHACDParameters}};
 use uuid::Uuid;
 
-use crate::{implement_partial_Object, implement_transformable, objects::{geometry::points_cloud::PointsCloud, object::{Object, ObjectType}}, opengl::{ebo::EBO, program::Program, vao::VAO, vbo::VBO}, utils::{core::SIZE_F32, material::Material, ray::Ray, transform::Transform, vector::calculate_normals}};
+use crate::{geometry::convex_hull::convex_hull, implement_partial_Object, implement_transformable, objects::{geometry::convex_hull::ConvexHull, object::{Object, ObjectType}}, opengl::{ebo::EBO, program::Program, vao::VAO, vbo::VBO}, utils::{core::SIZE_F32, material::Material, ray::Ray, transform::Transform, vector::calculate_normals}};
 
 pub struct Mesh {
   pub id: Uuid,
@@ -163,7 +163,6 @@ impl Mesh {
       .max_by(|a, b| a.partial_cmp(b).unwrap())
       .unwrap();
 
-    println!("max_dim: {}", max_dim);
     let epsilon_percentage = 0.05;
     let epsilon = max_dim * epsilon_percentage;
     let mut parts_indices = vec![Vec::new(); hulls.len()];
@@ -231,55 +230,67 @@ impl Object for Mesh {
 
   fn can_generate_convex_hull(&self) -> bool { true }
 
-  fn convex_hull(&self) -> Option<Mesh> {
+  fn convex_hull(&self, use_parry: bool) -> Option<ConvexHull> {
     let parts_indices = self.convex_decomposition();
 
-    let mut global_faces = Vec::new();
+    let mut final_hull_faces = Vec::new();
+    let mut final_hull_vertices = HashSet::new();
 
     for part_vertex_indices in parts_indices {
       if part_vertex_indices.len() < 4 { continue; }
 
       let local_vertices: Vec<Vec3> = part_vertex_indices.iter().map(|&i| self.vertices[i]).collect();
-      let (convex_hull_vertices, convex_hull_faces) = convex_hull(&local_vertices);
-      let mut local_to_global = Vec::new();
-      for ch_vert in &convex_hull_vertices {
-        if let Some(local_idx) = local_vertices.iter().position(|v| v == ch_vert) {
-          local_to_global.push(part_vertex_indices[local_idx]);
-        } else {
-          local_to_global.push(0);
-        }
-      }
+      if use_parry {
+        let (hull_vertices, hull_faces) = parry_convex_hull(&local_vertices);
+        let mut local_to_global = Vec::new();
+        for ch_vert in &hull_vertices {
+          if let Some(local_idx) = local_vertices.iter().position(|v| v == ch_vert) {
+            let global_idx = part_vertex_indices[local_idx];
+            local_to_global.push(global_idx);
 
-      for face in convex_hull_faces {
-        global_faces.push(local_to_global[face[0] as usize] as u32);
-        global_faces.push(local_to_global[face[1] as usize] as u32);
-        global_faces.push(local_to_global[face[2] as usize] as u32);
+            final_hull_vertices.insert(global_idx);
+          } else {
+            local_to_global.push(0);
+            final_hull_vertices.insert(0);
+          }
+        }
+
+        for face in hull_faces {
+          final_hull_faces.push(local_to_global[face[0] as usize] as u32);
+          final_hull_faces.push(local_to_global[face[1] as usize] as u32);
+          final_hull_faces.push(local_to_global[face[2] as usize] as u32);
+        }
+      } else {
+        let (hull_vertices, hull_faces) = convex_hull(&local_vertices);
+        for face in hull_faces {
+          final_hull_faces.push(part_vertex_indices[face[0]] as u32);
+          final_hull_faces.push(part_vertex_indices[face[1]] as u32);
+          final_hull_faces.push(part_vertex_indices[face[2]] as u32);
+        }
+
+        for local_idx in hull_vertices {
+          final_hull_vertices.insert(part_vertex_indices[local_idx]);
+        }
       }
     }
 
-    let mut mesh = Mesh::new(
+    let mesh = Mesh::new(
       format!("{}_convex_hull", self.name),
       self.vertices.clone(),
       Vec::new(),
-      global_faces,
+      final_hull_faces,
     );
 
-    mesh.transform = self.transform.clone();
-    mesh.material = self.material.clone();
+    let mut hull = ConvexHull::new(
+      format!("{}_convex_hull", self.name),
+      mesh,
+      final_hull_vertices,
+    );
 
-    return Some(mesh);
-  }
+    hull.transform = self.transform.clone();
+    hull.material = self.material.clone();
 
-  fn can_generate_points_cloud(&self) -> bool { true }
-  fn generate_points_cloud(&self, _use_parry: bool) -> Option<PointsCloud> {
-    let points = self.vertices.clone();
-    let mut cloud = PointsCloud::new(format!("{}_points", self.name), points, vec![]);
-    cloud.transform = self.transform.clone();
-    return Some(cloud);
-  }
-
-  fn generate_points_cloud_with_inner_samples(&self, _inner_samples: u32, _use_parry: bool) -> Option<PointsCloud> {
-    return self.generate_points_cloud(_use_parry);
+    return Some(hull);
   }
 }
 

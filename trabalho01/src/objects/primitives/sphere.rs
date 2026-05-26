@@ -2,7 +2,7 @@ use glam::Vec3;
 use uuid::Uuid;
 use parry3d::shape::Ball as ParrySphere;
 
-use crate::{implement_partial_Object, implement_transformable, objects::{geometry::points_cloud::PointsCloud, object::{Object, ObjectType}}, opengl::{ebo::EBO, program::Program, vao::VAO, vbo::VBO}, utils::{core::SIZE_F32, material::Material, ray::Ray, transform::Transform, vector::pvec3_vec_to_vec3_vec}};
+use crate::{implement_partial_Object, implement_transformable, objects::{object::{Object, ObjectType}}, opengl::{ebo::EBO, program::Program, vao::VAO, vbo::VBO}, utils::{core::SIZE_F32, material::Material, ray::Ray, transform::Transform, vector::pvec3_vec_to_vec3_vec}};
 
 pub struct Sphere {
   pub id: Uuid,
@@ -158,33 +158,32 @@ impl Object for Sphere {
     return point.length_squared() <= self.radius * self.radius;
   }
 
-  fn can_generate_points_cloud(&self) -> bool { true }
 
-  fn generate_points_cloud(&self, use_parry: bool) -> Option<PointsCloud> {
-    let points = self.get_vertices(use_parry);
-    let mut cloud = PointsCloud::new(format!("{}_points", self.name), points, vec![]);
-    cloud.transform = self.transform.clone();
-    return Some(cloud);
-  }
+  // fn generate_points_cloud(&self, use_parry: bool) -> Option<PointsCloud> {
+  //   let points = self.get_vertices(use_parry);
+  //   let mut cloud = PointsCloud::new(format!("{}_points", self.name), points, vec![]);
+  //   cloud.transform = self.transform.clone();
+  //   return Some(cloud);
+  // }
 
-  fn generate_points_cloud_with_inner_samples(&self, inner_samples: u32, use_parry: bool) -> Option<PointsCloud> {
-    let points = self.get_vertices(use_parry);
-    let mut inner_points = vec![];
+  // fn generate_points_cloud_with_inner_samples(&self, inner_samples: u32, use_parry: bool) -> Option<PointsCloud> {
+  //   let points = self.get_vertices(use_parry);
+  //   let mut inner_points = vec![];
 
-    for _ in 0..inner_samples {
-      let mut point = (Vec3::new(rand::random(), rand::random(), rand::random()) * 2.0 - Vec3::ONE)
-        * Vec3::new(self.radius, self.radius, self.radius);
-      while !self.contains_point(point) {
-        point = (Vec3::new(rand::random(), rand::random(), rand::random()) * 2.0 - Vec3::ONE)
-          * Vec3::new(self.radius, self.radius, self.radius);
-      }
-      inner_points.push(point);
-    }
+  //   for _ in 0..inner_samples {
+  //     let mut point = (Vec3::new(rand::random(), rand::random(), rand::random()) * 2.0 - Vec3::ONE)
+  //       * Vec3::new(self.radius, self.radius, self.radius);
+  //     while !self.contains_point(point) {
+  //       point = (Vec3::new(rand::random(), rand::random(), rand::random()) * 2.0 - Vec3::ONE)
+  //         * Vec3::new(self.radius, self.radius, self.radius);
+  //     }
+  //     inner_points.push(point);
+  //   }
 
-    let mut cloud = PointsCloud::new(format!("{}_points", self.name), points, inner_points);
-    cloud.transform = self.transform.clone();
-    return Some(cloud);
-  }
+  //   let mut cloud = PointsCloud::new(format!("{}_points", self.name), points, inner_points);
+  //   cloud.transform = self.transform.clone();
+  //   return Some(cloud);
+  // }
 }
 
 implement_transformable!(Sphere);
