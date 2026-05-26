@@ -20,6 +20,7 @@ pub enum UICommand {
   CreateObject(CreatingObject),
   DeleteObject(SelectedObject),
   CloneObject(SelectedObject),
+  SaveObject(SelectedObject, PathBuf),
   CreateConvexHull(SelectedObject, bool),
 }
 
@@ -322,6 +323,13 @@ impl Window {
             SelectedObject::Object(id) => { self.clone_object(id); }
             SelectedObject::Light(id) => { self.clone_light(id); }
             SelectedObject::None => {}
+          }
+        }
+
+        UICommand::SaveObject(props, path) => {
+          match props {
+            SelectedObject::Object(id) => { self.save_object(id, path); }
+            _ => {}
           }
         }
 

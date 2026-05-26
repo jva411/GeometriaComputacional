@@ -64,6 +64,23 @@ impl Window {
     self.select_object(SelectedObject::Object(new_object_id));
   }
 
+  pub fn save_object(&mut self, selected_id: Uuid, path: PathBuf) {
+    let object = self.scene.objects_by_id.get(&selected_id);
+    if object.is_none() {
+      return
+    }
+
+    let object = object.unwrap().clone();
+    let object = object.borrow();
+
+    if object.get_type() != ObjectType::ConvexHull {
+      return
+    }
+
+    let hull = object.as_any().downcast_ref::<ConvexHull>().unwrap();
+    let _ = hull.export_to_obj(path);
+  }
+
   pub fn create_convex_hull(&mut self, selected_id: Uuid, _use_parry: bool) {
     let object = self.scene.objects_by_id.get(&selected_id);
     if object.is_none() {
@@ -126,6 +143,19 @@ impl Window {
 
       if ui.button("Clone Object").clicked() {
         ui_manager.commands_queue.push(UICommand::CloneObject(SelectedObject::Object(selected_id)));
+      }
+
+      if object.get_type() == ObjectType::ConvexHull {
+        if ui.button("Save OBJ").clicked() {
+          let path = FileDialog::new()
+            .add_filter("OBJ", &["obj"])
+            .set_file_name(format!("{}.obj", object.get_name()))
+            .save_file();
+
+          if let Some(path) = path {
+            ui_manager.commands_queue.push(UICommand::SaveObject(SelectedObject::Object(selected_id), path));
+          }
+        }
       }
     });
     ui.separator();

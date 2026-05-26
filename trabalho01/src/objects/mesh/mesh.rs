@@ -157,12 +157,11 @@ impl Mesh {
       parts_planes.push(planes);
     }
 
-    let max_dim = self.vertices
+    let aabb = self.vertices
       .iter()
-      .map(|v| v.x.abs().max(v.y.abs()).max(v.z.abs()))
-      .max_by(|a, b| a.partial_cmp(b).unwrap())
-      .unwrap();
+      .fold((Vec3::MIN, Vec3::MAX), |(max, min), &v| (max.max(v), min.min(v)));
 
+    let max_dim = (aabb.1 - aabb.0).length();
     let epsilon_percentage = 0.05;
     let epsilon = max_dim * epsilon_percentage;
     let mut parts_indices = vec![Vec::new(); hulls.len()];
@@ -237,11 +236,13 @@ impl Object for Mesh {
 
     let mut final_hull_faces = Vec::new();
     let mut final_hull_vertices = HashSet::new();
+    let mut final_hull_parts = Vec::new();
 
-    for part_vertex_indices in parts_indices {
+    for part_vertex_indices in parts_indices.iter() {
       if part_vertex_indices.len() < 4 { continue; }
 
       let local_vertices: Vec<Vec3> = part_vertex_indices.iter().map(|&i| self.vertices[i]).collect();
+      let mut current_group_faces: Vec<_> = Vec::new();
       if use_parry {
         let (hull_vertices, hull_faces) = parry_convex_hull(&local_vertices);
         let mut local_to_global = Vec::new();
@@ -258,22 +259,34 @@ impl Object for Mesh {
         }
 
         for face in hull_faces {
-          final_hull_faces.push(local_to_global[face[0] as usize] as u32);
-          final_hull_faces.push(local_to_global[face[1] as usize] as u32);
-          final_hull_faces.push(local_to_global[face[2] as usize] as u32);
+          let global_face = [
+            local_to_global[face[0] as usize] as u32,
+            local_to_global[face[1] as usize] as u32,
+            local_to_global[face[2] as usize] as u32,
+          ];
+
+          final_hull_faces.extend(global_face);
+          current_group_faces.extend(global_face);
         }
       } else {
         let (hull_vertices, hull_faces) = convex_hull(&local_vertices);
         for face in hull_faces {
-          final_hull_faces.push(part_vertex_indices[face[0]] as u32);
-          final_hull_faces.push(part_vertex_indices[face[1]] as u32);
-          final_hull_faces.push(part_vertex_indices[face[2]] as u32);
+          let global_face = [
+            part_vertex_indices[face[0]] as u32,
+            part_vertex_indices[face[1]] as u32,
+            part_vertex_indices[face[2]] as u32,
+          ];
+
+          final_hull_faces.extend(global_face);
+          current_group_faces.extend(global_face);
         }
 
         for local_idx in hull_vertices {
           final_hull_vertices.insert(part_vertex_indices[local_idx]);
         }
       }
+
+      final_hull_parts.push(current_group_faces);
     }
 
     let mesh = Mesh::new(
@@ -283,10 +296,11 @@ impl Object for Mesh {
       final_hull_faces,
     );
 
-    let mut hull = ConvexHull::new(
+    let mut hull = ConvexHull::with_parts(
       format!("{}_convex_hull", self.name),
       mesh,
       final_hull_vertices,
+      final_hull_parts,
     );
 
     hull.transform = self.transform.clone();
