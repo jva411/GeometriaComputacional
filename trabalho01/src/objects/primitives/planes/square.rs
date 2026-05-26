@@ -1,7 +1,7 @@
 use glam::{Vec3};
 use uuid::Uuid;
 
-use crate::{implement_partial_Object, implement_transformable, objects::object::{Object, ObjectType}, opengl::{ebo::EBO, program::Program, vao::VAO, vbo::VBO}, utils::{core::SIZE_F32, material::Material, ray::Ray, transform::Transform}};
+use crate::{implement_partial_Object, implement_transformable, objects::object::{Object, ObjectType}, opengl::{ebo::EBO, renderer::Renderer, vao::VAO, vbo::VBO}, utils::{core::SIZE_F32, material::Material, ray::Ray, transform::Transform}};
 
 // struct GlobalProps {
 //   origem: Vec3,
@@ -120,7 +120,9 @@ impl Object for Square {
   //   self.global_props.up = model.mul(Vec4::Y).truncate();
   }
 
-  fn draw(&self, program: &Program, base_transform: Option<Transform>) {
+  fn draw(&self, renderer:  &mut Renderer, base_transform: Option<Transform>) {
+    let program = &renderer.current_program;
+
     self.vao.bind();
     self.vbo.bind();
     self.ebo.bind();

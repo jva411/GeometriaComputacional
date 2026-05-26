@@ -4,7 +4,7 @@ use glam::Vec3;
 use parry3d::transformation::{convex_hull as parry_convex_hull, vhacd::{VHACD, VHACDParameters}};
 use uuid::Uuid;
 
-use crate::{geometry::convex_hull::convex_hull, implement_partial_Object, implement_transformable, objects::{geometry::convex_hull::ConvexHull, object::{Object, ObjectType}}, opengl::{ebo::EBO, program::Program, vao::VAO, vbo::VBO}, utils::{core::SIZE_F32, material::Material, ray::Ray, transform::Transform, vector::calculate_normals}};
+use crate::{geometry::convex_hull::convex_hull, implement_partial_Object, implement_transformable, objects::{geometry::convex_hull::ConvexHull, object::{Object, ObjectType}}, opengl::{ebo::EBO, renderer::Renderer, vao::VAO, vbo::VBO}, utils::{core::SIZE_F32, material::Material, ray::Ray, transform::Transform, vector::calculate_normals}};
 
 pub struct Mesh {
   pub id: Uuid,
@@ -200,7 +200,9 @@ impl Object for Mesh {
 
   fn tick(&mut self) { }
 
-  fn draw(&self, program: &Program, base_transform: Option<Transform>) {
+  fn draw(&self, renderer:  &mut Renderer, base_transform: Option<Transform>) {
+    let program = &renderer.current_program;
+
     self.vao.bind();
     self.vbo.bind();
     self.ebo.bind();
@@ -291,6 +293,10 @@ impl Object for Mesh {
     hull.material = self.material.clone();
 
     return Some(hull);
+  }
+
+  fn convex_hull_with_inner_samples(&self, _inner_samples: u32) -> Option<ConvexHull> {
+    return self.convex_hull(false);
   }
 }
 

@@ -3,7 +3,7 @@ use std::{any::Any, cell::RefCell, rc::Rc};
 use glam::Vec3;
 use uuid::Uuid;
 
-use crate::{objects::geometry::{convex_hull::ConvexHull}, opengl::{program::Program, renderer::ProgramType}, utils::{material::Material, ray::Ray, transform::{Transform, Transformable}}};
+use crate::{objects::geometry::convex_hull::ConvexHull, opengl::renderer::{ProgramType, Renderer}, utils::{material::Material, ray::Ray, transform::{Transform, Transformable}}};
 
 #[allow(dead_code, unused_variables)]
 pub trait Object: Transformable {
@@ -18,7 +18,7 @@ pub trait Object: Transformable {
   fn get_material_mut(&mut self) -> &mut Material;
 
   fn tick(&mut self);
-  fn draw(&self, program: &Program, base_transform: Option<Transform>);
+  fn draw(&self, renderer: &mut Renderer, base_transform: Option<Transform>);
 
   fn as_any(&self) -> &dyn Any;
   fn as_any_mut(&mut self) -> &mut dyn Any;

@@ -20,6 +20,7 @@ struct PointLight {
 
 in vec3 normal;
 in vec3 fragmentPosition;
+in vec3 vertexColor;
 
 uniform Material material;
 uniform PointLight[MAX_LIGHTS] lights;
@@ -29,6 +30,7 @@ uniform vec3 cameraPosition;
 // Color override
 uniform bool uUseOverrideColor;
 uniform vec3 uOverrideColor;
+uniform bool uSimplex;
 
 out vec4 FragColor;
 
@@ -41,6 +43,8 @@ void main() {
 
   if (uUseOverrideColor) {
     FragColor = vec4(uOverrideColor, 1.0);
+  } else if (uSimplex) {
+    FragColor = vec4(vertexColor, 1.0);
   } else {
     vec3 finalColor = vec3(0.0, 0.0, 0.0);
     for (int i=0; i<n_lights; i++) {

@@ -1,8 +1,9 @@
+use std::collections::HashSet;
+
 use glam::Vec3;
 use uuid::Uuid;
-use parry3d::shape::Ball as ParrySphere;
 
-use crate::{implement_partial_Object, implement_transformable, objects::{object::{Object, ObjectType}}, opengl::{ebo::EBO, program::Program, vao::VAO, vbo::VBO}, utils::{core::SIZE_F32, material::Material, ray::Ray, transform::Transform, vector::pvec3_vec_to_vec3_vec}};
+use crate::{implement_partial_Object, implement_transformable, objects::{geometry::convex_hull::ConvexHull, mesh::mesh::Mesh, object::{Object, ObjectType}}, opengl::{ebo::EBO, renderer::Renderer, vao::VAO, vbo::VBO}, utils::{core::SIZE_F32, material::Material, ray::Ray, transform::Transform}};
 
 pub struct Sphere {
   pub id: Uuid,
@@ -108,14 +109,14 @@ impl Sphere {
     };
   }
 
-  fn get_vertices(&self, use_parry: bool) -> Vec<Vec3> {
-    if use_parry {
-      let parry_sphere = ParrySphere::new(self.radius);
-      let (points, _) = parry_sphere.to_trimesh(self.subdivisions, self.subdivisions);
-      return pvec3_vec_to_vec3_vec(&points);
+  fn get_vertices(&self) -> (Vec<Vec3>, Vec<u32>) {
+    let mut points = Vec::with_capacity(self.vertices.len() / 2);
+    for i in 0..self.vertices.len() / 2 {
+      points.push(self.vertices[i * 2]);
     }
+    let faces = self.indices.iter().map(|&v| v as u32).collect::<Vec<_>>();
 
-    return self.vertices.clone();
+    return (points, faces);
   }
 }
 
@@ -126,7 +127,9 @@ impl Object for Sphere {
 
   fn tick(&mut self) { }
 
-  fn draw(&self, program: &Program, base_transform: Option<Transform>) {
+  fn draw(&self, renderer: &mut Renderer, base_transform: Option<Transform>) {
+    let program = &renderer.current_program;
+
     self.vao.bind();
     self.vbo.bind();
     self.ebo.bind();
@@ -158,32 +161,49 @@ impl Object for Sphere {
     return point.length_squared() <= self.radius * self.radius;
   }
 
+  fn can_generate_convex_hull(&self) -> bool { true }
 
-  // fn generate_points_cloud(&self, use_parry: bool) -> Option<PointsCloud> {
-  //   let points = self.get_vertices(use_parry);
-  //   let mut cloud = PointsCloud::new(format!("{}_points", self.name), points, vec![]);
-  //   cloud.transform = self.transform.clone();
-  //   return Some(cloud);
-  // }
+  fn convex_hull(&self, _use_parry: bool) -> Option<ConvexHull> {
+    let (points, faces) = self.get_vertices();
+    let mut hull_points = HashSet::new();
+    for i in 0..points.len() {
+      hull_points.insert(i);
+    }
 
-  // fn generate_points_cloud_with_inner_samples(&self, inner_samples: u32, use_parry: bool) -> Option<PointsCloud> {
-  //   let points = self.get_vertices(use_parry);
-  //   let mut inner_points = vec![];
+    let new_name = format!("{}_hull", self.name);
+    let mesh = Mesh::new(new_name.clone(), points, vec![], faces);
+    let mut hull = ConvexHull::new(new_name, mesh, hull_points);
+    hull.transform = self.transform.clone();
+    hull.material = self.material.clone();
+    return Some(hull);
+  }
 
-  //   for _ in 0..inner_samples {
-  //     let mut point = (Vec3::new(rand::random(), rand::random(), rand::random()) * 2.0 - Vec3::ONE)
-  //       * Vec3::new(self.radius, self.radius, self.radius);
-  //     while !self.contains_point(point) {
-  //       point = (Vec3::new(rand::random(), rand::random(), rand::random()) * 2.0 - Vec3::ONE)
-  //         * Vec3::new(self.radius, self.radius, self.radius);
-  //     }
-  //     inner_points.push(point);
-  //   }
+  fn convex_hull_with_inner_samples(&self, inner_samples: u32) -> Option<ConvexHull> {
+    let (mut points, faces) = self.get_vertices();
+    let mut hull_points = HashSet::new();
+    for i in 0..points.len() {
+      hull_points.insert(i);
+    }
 
-  //   let mut cloud = PointsCloud::new(format!("{}_points", self.name), points, inner_points);
-  //   cloud.transform = self.transform.clone();
-  //   return Some(cloud);
-  // }
+    let mut inner_points = Vec::with_capacity(inner_samples as usize);
+    for _ in 0..inner_samples {
+      let mut point = (Vec3::new(rand::random(), rand::random(), rand::random()) * 2.0 - Vec3::ONE)
+        * Vec3::new(self.radius, self.radius, self.radius);
+      while !self.contains_point(point) {
+        point = (Vec3::new(rand::random(), rand::random(), rand::random()) * 2.0 - Vec3::ONE)
+          * Vec3::new(self.radius, self.radius, self.radius);
+      }
+      inner_points.push(point);
+    }
+
+    points.extend(inner_points);
+    let new_name = format!("{}_hull", self.name);
+    let mesh = Mesh::new(new_name.clone(), points, vec![], faces);
+    let mut hull = ConvexHull::new(new_name, mesh, hull_points);
+    hull.transform = self.transform.clone();
+    hull.material = self.material.clone();
+    return Some(hull);
+  }
 }
 
 implement_transformable!(Sphere);

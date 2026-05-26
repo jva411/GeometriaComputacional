@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use glam::Vec3;
 use uuid::Uuid;
 
-use crate::{implement_partial_Object, implement_transformable, objects::{mesh::mesh::Mesh, object::{Object, ObjectType}}, opengl::{program::Program, vao::VAO, vbo::VBO} , utils::{material::Material, transform::Transform}};
+use crate::{implement_partial_Object, implement_transformable, objects::{mesh::mesh::Mesh, object::{Object, ObjectType}}, opengl::{renderer::Renderer, vao::VAO, vbo::VBO} , utils::{material::Material, transform::Transform}};
 
 pub struct ConvexHull {
   pub id: Uuid,
@@ -16,6 +16,7 @@ pub struct ConvexHull {
   pub hull_vertices: HashSet<usize>,
 
   pub render_points: bool,
+  pub render_mesh: bool,
   vao: VAO,
   vbo: VBO,
 }
@@ -28,7 +29,7 @@ impl ConvexHull {
     vbo.bind();
 
     let inner_points_color = Vec3::new(0.0, 1.0, 0.0);
-    let hull_points_color = Vec3::new(1.0, 1.0, 1.0);
+    let hull_points_color = Vec3::new(1.0, 0.0, 0.0);
     let vertex_data = mesh.vertices.iter()
       .enumerate()
       .flat_map(|(i, point)| {
@@ -52,7 +53,8 @@ impl ConvexHull {
       mesh,
       hull_vertices,
 
-      render_points: true,
+      render_points: false,
+      render_mesh: true,
       vao,
       vbo,
     };
@@ -66,24 +68,29 @@ impl Object for ConvexHull {
 
   fn get_type(&self) -> ObjectType { ObjectType::ConvexHull }
 
-  fn tick(&mut self) {
-    self.mesh.transform = self.transform.clone();
-    self.mesh.material = self.material.clone();
-  }
+  fn tick(&mut self) { }
 
-  fn draw(&self, program: &Program, base_transform: Option<Transform>) {
+  fn draw(&self, renderer:  &mut Renderer, base_transform: Option<Transform>) {
     let model_transform = match base_transform {
       Some(t) => &self.transform.concat(&t),
       None => &self.transform,
     };
-    self.mesh.draw(program, Some(model_transform.clone()));
 
+    if self.render_mesh {
+      self.mesh.draw(renderer, Some(model_transform.clone()));
+    }
+
+    let program = &renderer.current_program;
     self.vao.bind();
     self.vbo.bind();
     model_transform.send_to_program(program);
     unsafe {
       if self.render_points {
+        program.set_uniform_bool("uSimplex", true).unwrap();
+        gl::Disable(gl::DEPTH_TEST);
         gl::DrawArrays(gl::POINTS, 0, self.mesh.vertices.len() as i32);
+        gl::Enable(gl::DEPTH_TEST);
+        program.set_uniform_bool("uSimplex", false).unwrap();
       }
     }
   }

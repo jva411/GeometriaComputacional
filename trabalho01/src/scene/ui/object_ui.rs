@@ -64,7 +64,7 @@ impl Window {
     self.select_object(SelectedObject::Object(new_object_id));
   }
 
-  pub fn create_convex_hull(&mut self, selected_id: Uuid, use_parry: bool) {
+  pub fn create_convex_hull(&mut self, selected_id: Uuid, _use_parry: bool) {
     let object = self.scene.objects_by_id.get(&selected_id);
     if object.is_none() {
       return
@@ -72,7 +72,8 @@ impl Window {
 
     let object = object.unwrap().clone();
     let object = object.borrow();
-    let hull = object.convex_hull(use_parry);
+    let n_samples = 1000;
+    let hull = object.convex_hull_with_inner_samples(n_samples);
     if hull.is_none() {
       return
     }
@@ -198,6 +199,7 @@ impl Window {
       let hull = object.as_any_mut().downcast_mut::<ConvexHull>().unwrap();
       ui.heading("Convex Hull");
       ui.checkbox(&mut hull.render_points, "View Points");
+      ui.checkbox(&mut hull.render_mesh, "View Mesh");
     }
   }
 }

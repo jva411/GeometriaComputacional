@@ -70,7 +70,7 @@ impl Scene {
       }
 
       for object in objects {
-        object.borrow().draw(program, None);
+        object.borrow().draw(renderer, None);
       }
     }
   }
