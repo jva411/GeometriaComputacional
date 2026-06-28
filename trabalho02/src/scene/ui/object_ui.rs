@@ -5,7 +5,7 @@ use glam::Vec3;
 use rfd::FileDialog;
 use uuid::Uuid;
 
-use crate::{objects::{geometry::convex_hull::ConvexHull, mesh::mesh::Mesh, object::{Object, ObjectType}, primitives::{cone::Cone, cube::Cube, cylinder::Cylinder, planes::square::Square, sphere::Sphere}}, scene::{scene::Scene, ui::ui::{CreatingObject, CreatingObjectType, SelectedObject, UICommand, UIManager}, window::Window}};
+use crate::{objects::{geometry::{convex_hull::ConvexHull, tetrahedron::TetrahedronObject}, mesh::mesh::Mesh, object::{Object, ObjectType}, primitives::{cone::Cone, cube::Cube, cylinder::Cylinder, planes::square::Square, sphere::Sphere}}, scene::{scene::Scene, ui::ui::{CreatingObject, CreatingObjectType, SelectedObject, UICommand, UIManager}, window::Window}};
 
 
 #[derive(Clone, Debug)]
@@ -23,7 +23,7 @@ impl Default for NewObjectProperties {
     NewObjectProperties {
       primitive: ObjectType::Cube,
       name: String::from("Cube"),
-      radius: 0.5,
+      radius: 1.0,
       height: 1.0,
       subdivisions: 30,
       obj_path: None,
@@ -89,8 +89,9 @@ impl Window {
 
     let object = object.unwrap().clone();
     let object = object.borrow();
-    let n_samples = 1000;
-    let hull = object.convex_hull_with_inner_samples(n_samples);
+    // let n_samples = 10;
+    // let hull = object.convex_hull_with_inner_samples(n_samples);
+    let hull = object.convex_hull(false);
     if hull.is_none() {
       return
     }
@@ -99,6 +100,30 @@ impl Window {
     let hull_id = hull.get_id();
     self.scene.add_object(Rc::new(RefCell::new(hull)));
     self.select_object(SelectedObject::Object(hull_id));
+  }
+
+  pub fn tetrahedralization(&mut self, selected_id: Uuid) {
+    let object = self.scene.objects_by_id.get(&selected_id);
+    if object.is_none() {
+      return
+    }
+
+    let object = object.unwrap().clone();
+    let object = object.borrow();
+    if object.get_type() != ObjectType::ConvexHull {
+      return
+    }
+
+    let hull = object.as_any().downcast_ref::<ConvexHull>().unwrap();
+    let tetrahedron_object = hull.tetrahedralization(true);
+    if tetrahedron_object.is_none() {
+      return
+    }
+
+    let tetrahedron_object = tetrahedron_object.unwrap();
+    let tetrahedron_object_id = tetrahedron_object.get_id();
+    self.scene.add_object(Rc::new(RefCell::new(tetrahedron_object)));
+    self.select_object(SelectedObject::Object(tetrahedron_object_id));
   }
 
   pub fn draw_objects_list(ui: &mut Ui, ui_manager: &mut UIManager, scene: &mut Scene) {
@@ -230,6 +255,20 @@ impl Window {
       ui.heading("Convex Hull");
       ui.checkbox(&mut hull.render_points, "View Points");
       ui.checkbox(&mut hull.render_mesh, "View Mesh");
+
+      if ui.button("Triangulate").clicked() {
+        ui_manager.commands_queue.push(UICommand::Tetrahedralization(SelectedObject::Object(selected_id)));
+      }
+    }
+
+    if object.get_type() == ObjectType::Tetrahedron {
+      let object = object.as_any_mut().downcast_mut::<TetrahedronObject>().unwrap();
+      ui.label("Shrink: ");
+      ui.add(egui::DragValue::new(&mut object.shrink).range(0.0..=0.99).speed(0.01));
+
+      ui.checkbox(&mut object.render_points, "View Points");
+      ui.checkbox(&mut object.render_mesh, "View Mesh");
+      ui.checkbox(&mut object.render_wireframe, "Wireframe");
     }
   }
 }
@@ -336,7 +375,7 @@ impl UIManager {
 
           ui.horizontal(|ui| {
             ui.label("Scale");
-            ui.add(egui::DragValue::new(&mut props.radius).range(0..=1).speed(0.001));
+            ui.add(egui::DragValue::new(&mut props.radius).range(0..=usize::MAX).speed(0.001));
           });
         }
         ObjectType::Square => {

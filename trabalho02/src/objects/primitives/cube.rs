@@ -159,7 +159,9 @@ impl Object for Cube {
   fn can_generate_convex_hull(&self) -> bool { true }
 
   fn convex_hull(&self, _use_parry: bool) -> Option<ConvexHull> {
-    let (points, faces) = self.get_vertices();
+    let (mut points, faces) = self.get_vertices();
+
+    // points.push(Vec3::ZERO);
 
     let new_name = format!("{}_hull", self.name);
     let mesh = Mesh::new(new_name.clone(), points, vec![], faces);

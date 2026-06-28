@@ -22,6 +22,7 @@ pub enum UICommand {
   CloneObject(SelectedObject),
   SaveObject(SelectedObject, PathBuf),
   CreateConvexHull(SelectedObject, bool),
+  Tetrahedralization(SelectedObject),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -336,6 +337,13 @@ impl Window {
         UICommand::CreateConvexHull(selected_object, use_parry) => {
           match selected_object {
             SelectedObject::Object(id) => { self.create_convex_hull(id, use_parry); }
+            _ => {}
+          }
+        }
+
+        UICommand::Tetrahedralization(selected_object) => {
+          match selected_object {
+            SelectedObject::Object(id) => { self.tetrahedralization(id); }
             _ => {}
           }
         }

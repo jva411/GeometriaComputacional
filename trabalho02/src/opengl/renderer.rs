@@ -6,6 +6,7 @@ use crate::opengl::{program::Program, shaders::Shaders};
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub enum ProgramType {
   Common,
+  // TriangleInstanced,
   Light,
   Grid,
 }
@@ -14,6 +15,7 @@ pub enum ProgramType {
 pub struct Renderer {
   pub programs: [Rc<Program>; 3],
   pub current_program: Rc<Program>,
+  pub current_program_type: ProgramType,
 }
 
 #[allow(dead_code)]
@@ -23,6 +25,11 @@ impl Renderer {
     let triangle_fragment_shader_file = File::open("assets/shaders/triangle/fragment.glsl").expect("Failed to open triangle fragment shader file");
     let shaders = Shaders::from_files(&triangle_vertex_shader_file, &triangle_fragment_shader_file)?;
     let program = Program::new(shaders);
+
+    // let triangle_instanced_vertex_shader_file = File::open("assets/shaders/triangle/instanced/vertex.glsl").expect("Failed to open triangle instanced vertex shader file");
+    // let triangle_instanced_fragment_shader_file = File::open("assets/shaders/triangle/instanced/fragment.glsl").expect("Failed to open triangle instanced fragment shader file");
+    // let triangle_instanced_shaders = Shaders::from_files(&triangle_instanced_vertex_shader_file, &triangle_instanced_fragment_shader_file)?;
+    // let triangle_instanced_program = Program::new(triangle_instanced_shaders);
 
     let light_vertex_shader_file = File::open("assets/shaders/light/vertex.glsl").expect("Failed to open light vertex shader file");
     let light_fragment_shader_file = File::open("assets/shaders/light/fragment.glsl").expect("Failed to open light fragment shader file");
@@ -35,9 +42,16 @@ impl Renderer {
     let grid_program = Program::new(grid_shaders);
 
     let current_program = Rc::new(program);
+
     return Some(Renderer {
-      programs: [current_program.clone(), Rc::new(light_program), Rc::new(grid_program)],
+      programs: [
+        current_program.clone(),
+        // Rc::new(triangle_instanced_program),
+        Rc::new(light_program),
+        Rc::new(grid_program),
+      ],
       current_program,
+      current_program_type: ProgramType::Common,
     });
   }
 
@@ -45,6 +59,7 @@ impl Renderer {
     let program_ref = &self.programs[program_type as usize];
     program_ref.bind();
     self.current_program = program_ref.clone();
+    self.current_program_type = program_type;
   }
 
   pub fn clear(&self, width: u32, height: u32) {

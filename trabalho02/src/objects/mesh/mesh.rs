@@ -106,6 +106,27 @@ impl Mesh {
       faces.extend(mesh.indices.iter().map(|i| *i as u32 + vertex_offset));
     }
 
+    if !vertices.is_empty() {
+      let mut min = Vec3::splat(f32::MAX);
+      let mut max = Vec3::splat(f32::MIN);
+
+      for &v in &vertices {
+        min = min.min(v);
+        max = max.max(v);
+      }
+
+      let center = (min + max) * 0.5;
+
+      let size = max - min;
+      let max_extent = size.max_element();
+
+      let scale_factor = if max_extent > 0.0 { 2.0 / max_extent } else { 1.0 };
+
+      for v in &mut vertices {
+        *v = (*v - center) * scale_factor;
+      }
+    }
+
     if normals.is_empty() {
       normals = calculate_normals(&vertices, &faces);
     }
@@ -190,6 +211,34 @@ impl Mesh {
 
     return parts_indices;
   }
+
+  fn convex_hull_without_decomposition(&self) -> Option<ConvexHull> {
+    let (hull_vertices, hull_faces) = convex_hull(&self.vertices);
+    let mut hull_faces_u32 = Vec::new();
+    for face in &hull_faces {
+      hull_faces_u32.push(face[0] as u32);
+      hull_faces_u32.push(face[1] as u32);
+      hull_faces_u32.push(face[2] as u32);
+    }
+
+    let mesh = Mesh::new(
+      format!("{}_convex_hull", self.name),
+      self.vertices.clone(),
+      Vec::new(),
+      hull_faces_u32,
+    );
+
+    let mut hull = ConvexHull::new(
+      format!("{}_convex_hull", self.name),
+      mesh,
+      HashSet::from_iter(hull_vertices),
+    );
+
+    hull.transform = self.transform.clone();
+    hull.material = self.material.clone();
+
+    return Some(hull);
+  }
 }
 
 impl Object for Mesh {
@@ -232,6 +281,7 @@ impl Object for Mesh {
   fn can_generate_convex_hull(&self) -> bool { true }
 
   fn convex_hull(&self, use_parry: bool) -> Option<ConvexHull> {
+    return self.convex_hull_without_decomposition();
     let parts_indices = self.convex_decomposition();
 
     let mut final_hull_faces = Vec::new();

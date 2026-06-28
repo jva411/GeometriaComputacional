@@ -44,6 +44,7 @@ pub enum ObjectType {
   Square,
   Mesh,
   ConvexHull,
+  Tetrahedron,
 }
 
 #[macro_export]

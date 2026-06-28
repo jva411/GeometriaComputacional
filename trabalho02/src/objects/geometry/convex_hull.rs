@@ -3,7 +3,7 @@ use std::{collections::{HashMap, HashSet}, fs::File, io::{BufWriter, Write}, pat
 use glam::Vec3;
 use uuid::Uuid;
 
-use crate::{implement_partial_Object, implement_transformable, objects::{mesh::mesh::Mesh, object::{Object, ObjectType}}, opengl::{renderer::Renderer, vao::VAO, vbo::VBO} , utils::{material::Material, transform::Transform}};
+use crate::{geometry::{octree::OctreeNode, tetrahedralization::try_advancing_front}, implement_partial_Object, implement_transformable, objects::{geometry::tetrahedron::TetrahedronObject, mesh::mesh::Mesh, object::{Object, ObjectType}}, opengl::{renderer::Renderer, vao::VAO, vbo::VBO}, utils::{material::Material, transform::Transform}};
 
 pub struct ConvexHull {
   pub id: Uuid,
@@ -112,6 +112,57 @@ impl ConvexHull {
 
     Ok(())
   }
+
+  pub fn tetrahedralization(&self, use_octree: bool) -> Option<TetrahedronObject> {
+    let mut parts = Vec::new();
+
+    let points = if use_octree {
+      let octree = OctreeNode::generate_from_mesh(&self.mesh.vertices, &self.mesh.faces, 5);
+      let mut octree_new_points = octree.get_leaves_centroids(&self.mesh.vertices, &self.mesh.faces);
+      let mut all_points = self.mesh.vertices.clone();
+      all_points.append(&mut octree_new_points);
+      all_points
+    } else {
+      self.mesh.vertices.clone()
+    };
+
+    for part_faces in &self.hull_parts {
+      if part_faces.len() < 3 {
+        continue;
+      }
+
+      let mut unique_verts = HashSet::new();
+      for &idx in part_faces {
+        unique_verts.insert(idx as usize);
+      }
+      let hull_points: Vec<usize> = unique_verts.into_iter().collect();
+      let hull_faces: Vec<usize> = part_faces.iter().map(|&idx| idx as usize).collect();
+
+      if let Some(mesh) = try_advancing_front(&points, &hull_points, &hull_faces) {
+        if !mesh.tetrahedrons.is_empty() {
+          println!("{} tetrahedrons", mesh.tetrahedrons.len());
+          parts.push(crate::objects::geometry::tetrahedron::TetrahedronPart {
+            points: mesh.points,
+            tetrahedrons: mesh.tetrahedrons,
+          });
+        }
+      }
+    }
+
+    if parts.is_empty() {
+      return None;
+    }
+
+    let mut tetra_obj = TetrahedronObject::new(
+      format!("{}_tetrahedralized", self.name),
+      parts,
+    );
+
+    tetra_obj.transform = self.transform.clone();
+    tetra_obj.material = self.material.clone();
+
+    Some(tetra_obj)
+  }
 }
 
 impl Object for ConvexHull {
@@ -121,7 +172,7 @@ impl Object for ConvexHull {
 
   fn tick(&mut self) { }
 
-  fn draw(&self, renderer:  &mut Renderer, base_transform: Option<Transform>) {
+  fn draw(&self, renderer: &mut Renderer, base_transform: Option<Transform>) {
     let model_transform = match base_transform {
       Some(t) => &self.transform.concat(&t),
       None => &self.transform,

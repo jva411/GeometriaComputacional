@@ -31,6 +31,8 @@ uniform vec3 cameraPosition;
 uniform bool uUseOverrideColor;
 uniform vec3 uOverrideColor;
 uniform bool uSimplex;
+uniform bool uUseSimplexColor = false;
+uniform vec3 uSimplexColor = vec3(0.0, 0.0, 0.0);
 
 out vec4 FragColor;
 
@@ -44,7 +46,11 @@ void main() {
   if (uUseOverrideColor) {
     FragColor = vec4(uOverrideColor, 1.0);
   } else if (uSimplex) {
-    FragColor = vec4(vertexColor, 1.0);
+    if (uUseSimplexColor) {
+      FragColor = vec4(uSimplexColor, 1.0);
+    } else {
+      FragColor = vec4(vertexColor, 1.0);
+    }
   } else {
     vec3 finalColor = vec3(0.0, 0.0, 0.0);
     for (int i=0; i<n_lights; i++) {

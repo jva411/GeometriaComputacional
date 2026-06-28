@@ -95,6 +95,7 @@ pub fn try_convex_hull(points: &Vec<Vec3>) -> Option<(Vec<usize>, Vec<[usize; 3]
   let mut stack = vec![face1, face2];
   while let Some(face) = stack.pop() {
     if face.max_distant_point.is_none() {
+      hull_faces.push(face.vertices);
       continue;
     }
 
@@ -117,7 +118,6 @@ pub fn try_convex_hull(points: &Vec<Vec3>) -> Option<(Vec<usize>, Vec<[usize; 3]
       if new_face.visible_points.len() >= face.visible_points.len() {
         panic!("Invalid face");
       }
-      hull_faces.push(new_face.vertices);
       stack.push(new_face);
     }
   }
