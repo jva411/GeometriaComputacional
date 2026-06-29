@@ -1,4 +1,5 @@
 use glam::Vec3;
+use rand::RngExt;
 
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -41,33 +42,12 @@ impl OctreeNode {
       return;
     }
 
-    if self.is_leaf() {
-      if self.node_type == OctreeNodeType::IN {
-        new_points.push((self.aabb.min + self.aabb.max) * 0.5);
-        return;
-      }
-
-      let min = self.aabb.min;
-      let max = self.aabb.max;
-      let candidates = [
-        (self.aabb.min + self.aabb.max) * 0.5,
-        Vec3::new(min.x, min.y, min.z),
-        Vec3::new(min.x, min.y, max.z),
-        Vec3::new(min.x, max.y, min.z),
-        Vec3::new(min.x, max.y, max.z),
-        Vec3::new(max.x, min.y, min.z),
-        Vec3::new(max.x, min.y, max.z),
-        Vec3::new(max.x, max.y, min.z),
-        Vec3::new(max.x, max.y, max.z),
-      ];
-
-      for c in candidates {
-        if mesh_classify_point(points, faces, c) == OctreeNodeType::IN {
-          new_points.push(c);
-          return;
-        }
-      }
-
+    if self.node_type == OctreeNodeType::IN {
+      let mut rng = rand::rng();
+      let cell_diagonal = (self.aabb.max - self.aabb.min).length();
+      let jitter_scale = cell_diagonal * 1e-3;
+      let point = ((self.aabb.min + self.aabb.max) * 0.5) + Vec3::new(rng.random(), rng.random(), rng.random()) * jitter_scale;
+      new_points.push(point);
       return;
     }
 
@@ -77,8 +57,6 @@ impl OctreeNode {
       }
     }
   }
-
-  pub fn is_leaf(&self) -> bool { self.children.is_none() }
 
   pub fn generate_from_mesh(points: &Vec<Vec3>, faces: &Vec<u32>, max_depth: u32) -> Self {
     let mut min = Vec3::splat(f32::MAX);
@@ -260,4 +238,92 @@ fn ray_intersects_triangle(orig: Vec3, dir: Vec3, v0: Vec3, v1: Vec3, v2: Vec3) 
   }
 
   return true;
+}
+
+pub struct PointOctree {
+  pub aabb: AABB,
+  pub indices: Vec<usize>,
+  pub children: Option<Vec<Box<PointOctree>>>,
+}
+
+impl PointOctree {
+  /// Constrói a Octree a partir de uma lista de pontos e seus índices
+  pub fn new(points: &Vec<Vec3>, indices: Vec<usize>, aabb: AABB, depth: u32, max_depth: u32) -> Self {
+    let max_points_per_leaf = 16;
+
+    // Condição de parada: limite de profundidade ou poucos pontos no nó
+    if depth >= max_depth || indices.len() <= max_points_per_leaf {
+      return Self { aabb, indices, children: None };
+    }
+
+    let mid = (aabb.min + aabb.max) * 0.5;
+    let mut children_indices = vec![Vec::new(); 8];
+
+    // Distribui os pontos entre os 8 octantes
+    for &idx in &indices {
+      let p = points[idx];
+      let mut octant = 0;
+      if p.x >= mid.x { octant |= 1; }
+      if p.y >= mid.y { octant |= 2; }
+      if p.z >= mid.z { octant |= 4; }
+      children_indices[octant].push(idx);
+    }
+
+    // Cria os nós filhos
+    let mut children = Vec::with_capacity(8);
+    for i in 0..8 {
+      let min = Vec3::new(
+        if (i & 1) == 0 { aabb.min.x } else { mid.x },
+        if (i & 2) == 0 { aabb.min.y } else { mid.y },
+        if (i & 4) == 0 { aabb.min.z } else { mid.z },
+      );
+      let max = Vec3::new(
+        if (i & 1) == 0 { mid.x } else { aabb.max.x },
+        if (i & 2) == 0 { mid.y } else { aabb.max.y },
+        if (i & 4) == 0 { mid.z } else { aabb.max.z },
+      );
+
+      children.push(Box::new(PointOctree::new(
+        points,
+        children_indices[i].clone(),
+        AABB { min, max },
+        depth + 1,
+        max_depth
+      )));
+    }
+
+    Self {
+      aabb,
+      indices: Vec::new(),
+      children: Some(children),
+    }
+  }
+
+  pub fn query_sphere(&self, points: &Vec<Vec3>, center: Vec3, radius_sq: f32, result: &mut Vec<usize>) {
+    if !self.aabb_intersects_sphere(center, radius_sq) {
+      return;
+    }
+
+    if let Some(children) = &self.children {
+      for child in children {
+        child.query_sphere(points, center, radius_sq, result);
+      }
+    } else {
+      for &idx in &self.indices {
+        let dist_sq = (points[idx] - center).length_squared();
+        if dist_sq <= radius_sq {
+          result.push(idx);
+        }
+      }
+    }
+  }
+
+  fn aabb_intersects_sphere(&self, center: Vec3, radius_sq: f32) -> bool {
+    let x = center.x.max(self.aabb.min.x).min(self.aabb.max.x);
+    let y = center.y.max(self.aabb.min.y).min(self.aabb.max.y);
+    let z = center.z.max(self.aabb.min.z).min(self.aabb.max.z);
+
+    let closest_point = Vec3::new(x, y, z);
+    (closest_point - center).length_squared() <= radius_sq
+  }
 }

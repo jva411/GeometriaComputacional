@@ -159,7 +159,7 @@ impl Object for TetrahedronObject {
     if self.render_wireframe {
       program.set_uniform_bool("uSimplex", true).unwrap();
       program.set_uniform_bool("uUseSimplexColor", true).unwrap();
-      program.set_uniform_vec3f("uSimplexColor", Vec3::new(1.0, 1.0, 1.0)).unwrap();
+      program.set_uniform_vec3f("uSimplexColor", Vec3::new(0.0, 0.0, 0.0)).unwrap();
       unsafe {
         gl::PolygonMode(gl::FRONT_AND_BACK, gl::LINE);
         gl::LineWidth(1.5);
@@ -173,7 +173,7 @@ impl Object for TetrahedronObject {
     if self.render_points {
       program.set_uniform_bool("uSimplex", true).unwrap();
       program.set_uniform_bool("uUseSimplexColor", true).unwrap();
-      program.set_uniform_vec3f("uSimplexColor", Vec3::new(0.0, 0.0, 0.0)).unwrap();
+      program.set_uniform_vec3f("uSimplexColor", Vec3::new(1.0, 1.0, 1.0)).unwrap();
       unsafe {
         gl::PointSize(5.0);
         gl::DrawArrays(gl::POINTS, 0, self.elements_count / 3);

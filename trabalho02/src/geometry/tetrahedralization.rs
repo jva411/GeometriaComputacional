@@ -1,5 +1,7 @@
 use glam::Vec3;
-use std::{collections::{HashMap, HashSet}, fmt::Display};
+use std::{collections::{HashSet, VecDeque}, fmt::Display};
+
+use crate::geometry::octree::{AABB, PointOctree};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Face(pub usize, pub usize, pub usize);
@@ -31,77 +33,166 @@ pub struct TetrahedralMesh {
   pub tetrahedrons: Vec<Tetrahedron>,
 }
 
-pub fn advancing_front(points: &Vec<Vec3>, hull_points: &Vec<usize>, hull_faces: &Vec<usize>) -> TetrahedralMesh {
-  try_advancing_front(points, hull_points, hull_faces).unwrap()
-}
-
 pub fn try_advancing_front(points: &Vec<Vec3>, hull_points: &Vec<usize>, hull_faces: &Vec<usize>) -> Option<TetrahedralMesh> {
   println!("Tetrahedralization: points: {}, hull_points: {}, hull_faces: {}", points.len(), hull_points.len(), hull_faces.len());
   if points.len() < 4 || hull_faces.len() < 3 {
     return None;
   }
 
-  let mut tetrahedrons = Vec::new();
-  let mut active_front: HashMap<Face, Face> = HashMap::new();
+  let mut min_bound = Vec3::splat(f32::MAX);
+  let mut max_bound = Vec3::splat(f32::MIN);
+  for &p in points {
+    min_bound = min_bound.min(p);
+    max_bound = max_bound.max(p);
+  }
 
+  let bounds = AABB { min: min_bound - 0.01, max: max_bound + 0.01 };
+  let all_points_indices: Vec<usize> = (0..points.len()).collect();
+  let point_octree = PointOctree::new(points, all_points_indices.clone(), bounds, 0, 7);
+
+  let mesh_scale = (bounds.max - bounds.min).length().max(1e-6);
+  let det_epsilon = (mesh_scale * mesh_scale * mesh_scale) * 1e-7;
+
+  let max_tetrahedrons = (points.len() * 20).max(1000);
+  let log_interval: u64 = 2000;
+  let mut iterations: u64 = 0;
+  let mut aborted = false;
+
+  let mut tetrahedrons = Vec::new();
+  let mut active_front_queue: VecDeque<Face> = VecDeque::new();
+  let mut active_front_set: HashSet<Face> = HashSet::new();
   let mut generated_tetras: HashSet<[usize; 4]> = HashSet::new();
 
+  let mut initial_faces = Vec::new();
   for chunk in hull_faces.chunks_exact(3) {
-    let face = Face(chunk[0], chunk[1], chunk[2]);
+    initial_faces.push(Face(chunk[0], chunk[1], chunk[2]));
+  }
+
+  initial_faces.sort_by(|a, b| {
+    let area_a = face_area(points, a);
+    let area_b = face_area(points, b);
+    area_a.partial_cmp(&area_b).unwrap_or(std::cmp::Ordering::Equal)
+  });
+
+  for face in initial_faces {
     let sorted_face = face.sorted();
-    if active_front.contains_key(&sorted_face) {
-      active_front.remove(&sorted_face);
+    if active_front_set.contains(&sorted_face) {
+      active_front_set.remove(&sorted_face);
     } else {
-      active_front.insert(face.sorted(), face);
+      active_front_set.insert(sorted_face);
+      active_front_queue.push_back(face);
     }
   }
 
   let mut used_points: HashSet<usize> = hull_points.iter().cloned().collect();
-  let all_points_indices: Vec<usize> = (0..points.len() as usize).collect();
 
-  println!("active_front: {}", active_front.len());
+  println!("active_front inicial: {}", active_front_queue.len());
 
-  while let Some(&sorted_face) = active_front.keys().next() {
-    let face = active_front.remove(&sorted_face).unwrap();
+  while let Some(face) = active_front_queue.pop_front() {
+    iterations += 1;
+
+    if iterations % log_interval == 0 {
+      println!(
+        "Tetrahedralization: iteração {}, fila ativa={}, tetraedros gerados={}",
+        iterations, active_front_queue.len(), tetrahedrons.len()
+      );
+    }
+
+    if tetrahedrons.len() >= max_tetrahedrons {
+      println!(
+        "AVISO: Tetrahedralization abortada pela trava de segurança ({} tetraedros, fila restante={}). Possível front não convergente.",
+        tetrahedrons.len(), active_front_queue.len() + 1
+      );
+      aborted = true;
+      break;
+    }
+
+    let sorted_face = face.sorted();
+    if !active_front_set.contains(&sorted_face) {
+      continue;
+    }
+
+    active_front_set.remove(&sorted_face);
 
     let p1 = points[face.0 as usize];
     let p2 = points[face.1 as usize];
     let p3 = points[face.2 as usize];
 
-    let mut best_point: Option<usize> = None;
-    let mut min_distance = f32::MAX;
+    let normal = (p2 - p1).cross(p3 - p1);
 
-    for &point_index in &all_points_indices {
-      if face.contains(point_index) {
-        continue;
-      }
+    let centroid = (p1 + p2 + p3) / 3.0;
+      let max_edge = (p1 - p2).length().max((p2 - p3).length()).max((p3 - p1).length());
 
-      let mut tet_signature = [face.0, face.1, face.2, point_index];
-      tet_signature.sort_unstable();
-      if generated_tetras.contains(&tet_signature) {
-        continue;
-      }
+      let max_search_limit = (bounds.max - bounds.min).length();
+      let mut search_radius = (max_edge * 2.0).max(1e-4).min(max_search_limit);
 
-      let candidate_pt = points[point_index as usize];
-      let normal = (p2 - p1).cross(p3 - p1);
-      let dot = normal.dot(candidate_pt - p1);
+      let mut best_point: Option<usize> = None;
+      let mut fallback_point: Option<(usize, f32)> = None;
+      let mut points_in_radius = Vec::new();
 
-      if dot >= -EPSILON || (dot.abs() / 6.0) < EPSILON {
-        continue;
-      }
+      while search_radius <= max_search_limit {
+        points_in_radius.clear();
+        point_octree.query_sphere(points, centroid, search_radius * search_radius, &mut points_in_radius);
+        let mut candidates = Vec::new();
+        for &point_index in &points_in_radius {
+          if face.contains(point_index) { continue; }
 
-      if !is_valid_tetrahedron(points, &face, point_index, &active_front) {
-        continue;
-      }
+          let mut tet_signature = [face.0, face.1, face.2, point_index];
+          tet_signature.sort_unstable();
+          if generated_tetras.contains(&tet_signature) { continue; }
 
-      let radius = circumsphere_radius_sq(p1, p2, p3, candidate_pt);
-      if is_sphere_empty(points, p1, p2, p3, candidate_pt, &active_front) {
-        if radius < min_distance {
-          min_distance = radius;
-          best_point = Some(point_index);
+          let candidate_pt = points[point_index];
+          let dot = normal.dot(candidate_pt - p1);
+
+          if dot >= -det_epsilon || (dot.abs() / 6.0) < det_epsilon { continue; }
+
+          let a = p2 - p1;
+          let b = p3 - p1;
+          let c = candidate_pt - p1;
+          let det = 2.0 * a.dot(b.cross(c));
+
+          if det.abs() > det_epsilon {
+            let center_offset = (
+              a.length_squared() * b.cross(c) +
+              b.length_squared() * c.cross(a) +
+              c.length_squared() * a.cross(b)
+            ) / det;
+            let radius_sq = center_offset.length_squared();
+            let circumcenter = p1 + center_offset;
+
+            candidates.push((point_index, radius_sq, circumcenter));
+          }
         }
-      }
+
+        candidates.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+
+        for (point_index, radius_sq, circumcenter) in candidates {
+          if !is_valid_tetrahedron(points, &face, point_index, &active_front_set, det_epsilon) {
+            continue;
+          }
+
+          if fallback_point.map_or(true, |(_, best_radius_sq)| radius_sq < best_radius_sq) {
+            fallback_point = Some((point_index, radius_sq));
+          }
+
+          if is_sphere_empty_octree(&point_octree, points, circumcenter, radius_sq, [face.0, face.1, face.2, point_index]) {
+            best_point = Some(point_index);
+            break;
+          }
+        }
+
+        if best_point.is_some() {
+          break;
+        }
+
+        search_radius *= 2.0;
     }
+
+    let best_point = best_point.or_else(|| {
+      fallback_point.map(|(point_index, _)| {
+        point_index
+      })
+    });
 
     if let Some(point_index) = best_point {
       tetrahedrons.push(Tetrahedron(face.0, face.1, face.2, point_index));
@@ -119,13 +210,27 @@ pub fn try_advancing_front(points: &Vec<Vec3>, hull_points: &Vec<usize>, hull_fa
 
       for new_face in new_faces {
         let sorted = new_face.sorted();
-        if active_front.contains_key(&sorted) {
-          active_front.remove(&sorted);
+
+        if active_front_set.contains(&sorted) {
+          active_front_set.remove(&sorted);
         } else {
-          active_front.insert(sorted, new_face);
+          active_front_set.insert(sorted);
+          active_front_queue.push_back(new_face);
         }
       }
     }
+  }
+
+  if aborted {
+    println!(
+      "Tetrahedralization: finalizada por abort de segurança após {} iterações, {} tetraedros gerados, {} faces restantes no front.",
+      iterations, tetrahedrons.len(), active_front_queue.len() + active_front_set.len()
+    );
+  } else {
+    println!(
+      "Tetrahedralization: front convergiu após {} iterações, {} tetraedros gerados.",
+      iterations, tetrahedrons.len()
+    );
   }
 
   Some(TetrahedralMesh {
@@ -134,30 +239,20 @@ pub fn try_advancing_front(points: &Vec<Vec3>, hull_points: &Vec<usize>, hull_fa
   })
 }
 
-const EPSILON: f32 = 1e-8;
-
 pub fn is_valid_tetrahedron(
   points: &Vec<Vec3>,
   base_face: &Face,
   candidate_idx: usize,
-  front: &HashMap<Face, Face>,
+  front: &HashSet<Face>,
+  epsilon: f32,
 ) -> bool {
-  return true;
-  let p0 = points[base_face.0 as usize];
-  let p1 = points[base_face.1 as usize];
-  let p2 = points[base_face.2 as usize];
-  let pc = points[candidate_idx as usize];
+  let p0 = points[base_face.0];
+  let p1 = points[base_face.1];
+  let p2 = points[base_face.2];
+  let pc = points[candidate_idx];
 
-  for (i, p) in points.iter().enumerate() {
-    let idx = i as usize;
-    if idx == base_face.0 || idx == base_face.1 || idx == base_face.2 || idx == candidate_idx {
-      continue;
-    }
-
-    if is_point_in_tetrahedron(*p, p0, p1, p2, pc) {
-      return false;
-    }
-  }
+  let tet_min = p0.min(p1).min(p2).min(pc);
+  let tet_max = p0.max(p1).max(p2).max(pc);
 
   let new_edges = [
     (pc, p0),
@@ -171,17 +266,30 @@ pub fn is_valid_tetrahedron(
     (pc, p2, p0),
   ];
 
-  for existing_face in front.values() {
-    if existing_face.0 == base_face.0 && existing_face.1 == base_face.1 && existing_face.2 == base_face.2 {
+  let sorted_base = base_face.sorted();
+
+  for existing_face in front.iter() {
+    if *existing_face == sorted_base {
       continue;
     }
 
-    let fp0 = points[existing_face.0 as usize];
-    let fp1 = points[existing_face.1 as usize];
-    let fp2 = points[existing_face.2 as usize];
+    let fp0 = points[existing_face.0];
+    let fp1 = points[existing_face.1];
+    let fp2 = points[existing_face.2];
+
+    let face_min = fp0.min(fp1).min(fp2);
+    let face_max = fp0.max(fp1).max(fp2);
+
+    let pad = 1e-4;
+    if tet_max.x < face_min.x - pad || tet_min.x > face_max.x + pad ||
+      tet_max.y < face_min.y - pad || tet_min.y > face_max.y + pad ||
+      tet_max.z < face_min.z - pad || tet_min.z > face_max.z + pad {
+      continue;
+    }
 
     for &(start, end) in &new_edges {
-      if segment_intersects_triangle_interior(start, end, fp0, fp1, fp2) {
+      if shares_vertex(start, end, fp0, fp1, fp2) { continue; }
+      if segment_intersects_triangle_interior(start, end, fp0, fp1, fp2, epsilon) {
         return false;
       }
     }
@@ -194,7 +302,8 @@ pub fn is_valid_tetrahedron(
 
     for &(start, end) in &front_edges {
       for &(v0, v1, v2) in &new_faces {
-        if segment_intersects_triangle_interior(start, end, v0, v1, v2) {
+        if shares_vertex(start, end, v0, v1, v2) { continue; }
+        if segment_intersects_triangle_interior(start, end, v0, v1, v2, epsilon) {
           return false;
         }
       }
@@ -204,22 +313,10 @@ pub fn is_valid_tetrahedron(
   true
 }
 
-fn is_point_in_tetrahedron(p: Vec3, a: Vec3, b: Vec3, c: Vec3, d: Vec3) -> bool {
-  fn same_side(v1: Vec3, v2: Vec3, v3: Vec3, v4: Vec3, p: Vec3) -> bool {
-    let normal = (v2 - v1).cross(v3 - v1);
-    let dot_v4 = normal.dot(v4 - v1);
-    let dot_p = normal.dot(p - v1);
 
-    (dot_v4 * dot_p) > EPSILON
-  }
+fn segment_intersects_triangle_interior(p: Vec3, q: Vec3, v0: Vec3, v1: Vec3, v2: Vec3, degeneracy_epsilon: f32) -> bool {
+  const PARAM_EPSILON: f32 = 1e-6;
 
-  same_side(a, b, c, d, p) &&
-  same_side(a, b, d, c, p) &&
-  same_side(a, c, d, b, p) &&
-  same_side(b, c, d, a, p)
-}
-
-fn segment_intersects_triangle_interior(p: Vec3, q: Vec3, v0: Vec3, v1: Vec3, v2: Vec3) -> bool {
   let edge1 = v1 - v0;
   let edge2 = v2 - v0;
   let ray_dir = q - p;
@@ -227,7 +324,7 @@ fn segment_intersects_triangle_interior(p: Vec3, q: Vec3, v0: Vec3, v1: Vec3, v2
   let h = ray_dir.cross(edge2);
   let a_det = edge1.dot(h);
 
-  if a_det > -EPSILON && a_det < EPSILON {
+  if a_det > -degeneracy_epsilon && a_det < degeneracy_epsilon {
     return false;
   }
 
@@ -235,69 +332,49 @@ fn segment_intersects_triangle_interior(p: Vec3, q: Vec3, v0: Vec3, v1: Vec3, v2
   let s = p - v0;
   let u = f * s.dot(h);
 
-  if u < EPSILON || u > (1.0 - EPSILON) {
+  if u < PARAM_EPSILON || u > (1.0 - PARAM_EPSILON) {
     return false;
   }
 
   let q_vec = s.cross(edge1);
   let v = f * ray_dir.dot(q_vec);
 
-  if v < EPSILON || (u + v) > (1.0 - EPSILON) {
+  if v < PARAM_EPSILON || (u + v) > (1.0 - PARAM_EPSILON) {
     return false;
   }
 
   let t = f * edge2.dot(q_vec);
 
-  t > EPSILON && t < (1.0 - EPSILON)
+  t > PARAM_EPSILON && t < (1.0 - PARAM_EPSILON)
 }
 
-fn circumsphere_radius_sq(p1: Vec3, p2: Vec3, p3: Vec3, p4: Vec3) -> f32 {
-  let a = p2 - p1;
-  let b = p3 - p1;
-  let c = p4 - p1;
-  let det = 2.0 * a.dot(b.cross(c));
-  if det.abs() < EPSILON { return f32::MAX; }
-
-  let center = (a.length_squared() * b.cross(c) +
-    b.length_squared() * c.cross(a) +
-    c.length_squared() * a.cross(b)) / det;
-
-  return center.length_squared();
-}
-
-pub fn is_sphere_empty(
+pub fn is_sphere_empty_octree(
+  octree: &PointOctree,
   points: &Vec<Vec3>,
-  p1: Vec3, p2: Vec3, p3: Vec3, p4: Vec3,
-  _front: &HashMap<Face, Face>
+  circumcenter: Vec3,
+  radius_sq: f32,
+  ignore_indices: [usize; 4]
 ) -> bool {
-  let a = p2 - p1;
-  let b = p3 - p1;
-  let c = p4 - p1;
+  let mut points_in_sphere = Vec::new();
 
-  let det = 2.0 * a.dot(b.cross(c));
+  octree.query_sphere(points, circumcenter, radius_sq * 0.999, &mut points_in_sphere);
 
-  if det.abs() < EPSILON {
-    return false;
-  }
-
-  let center = (b.cross(c) * a.length_squared() +
-    c.cross(a) * b.length_squared() +
-    a.cross(b) * c.length_squared()) / det;
-
-  let circumcenter = p1 + center;
-  let radius_sq = center.length_squared();
-
-  for &p in points {
-    if p == p1 || p == p2 || p == p3 || p == p4 {
-      continue;
-    }
-
-    let dist_sq = (p - circumcenter).length_squared();
-
-    if dist_sq < radius_sq - 1e-5 {
+  for idx in points_in_sphere {
+    if !ignore_indices.contains(&idx) {
       return false;
     }
   }
 
   true
+}
+
+fn shares_vertex(start: Vec3, end: Vec3, v0: Vec3, v1: Vec3, v2: Vec3) -> bool {
+  start == v0 || start == v1 || start == v2 || end == v0 || end == v1 || end == v2
+}
+
+fn face_area(points: &Vec<Vec3>, face: &Face) -> f32 {
+  let p0 = points[face.0];
+  let p1 = points[face.1];
+  let p2 = points[face.2];
+  0.5 * (p1 - p0).cross(p2 - p0).length()
 }

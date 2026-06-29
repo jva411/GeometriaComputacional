@@ -161,7 +161,12 @@ impl Object for Cube {
   fn convex_hull(&self, _use_parry: bool) -> Option<ConvexHull> {
     let (mut points, faces) = self.get_vertices();
 
-    // points.push(Vec3::ZERO);
+    points.push(Vec3::ZERO);
+
+    for point in points.iter_mut() {
+      let jitter_scale = 1e-4;
+      *point += Vec3::new(rand::random(), rand::random(), rand::random()) * jitter_scale;
+    }
 
     let new_name = format!("{}_hull", self.name);
     let mesh = Mesh::new(new_name.clone(), points, vec![], faces);
