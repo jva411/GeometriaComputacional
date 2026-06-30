@@ -112,10 +112,10 @@ impl Scene {
     // }
   }
 
-  pub fn remove_object(&mut self, id: Uuid) {
+  pub fn remove_object(&mut self, id: Uuid) -> bool {
     let removed_object = self.objects_by_id.remove(&id);
     if removed_object.is_none() {
-      return
+      return false;
     };
 
     let removed_object = removed_object.unwrap();
@@ -128,6 +128,8 @@ impl Scene {
     if let Some(index) = self.objects.iter().position(|object| object.borrow().get_id() == id) {
       self.objects.remove(index);
     }
+
+    return true;
   }
 
   pub fn add_light(&mut self, light: Rc<RefCell<dyn Light>>) {
@@ -136,14 +138,16 @@ impl Scene {
     self.lights_by_id.insert(id, light);
   }
 
-  pub fn remove_light(&mut self, id: Uuid) {
+  pub fn remove_light(&mut self, id: Uuid) -> bool {
     if self.lights_by_id.remove(&id).is_none() {
-      return
+      return false;
     };
 
     if let Some(index) = self.lights.iter().position(|light| light.borrow().get_id() == id) {
       self.lights.remove(index);
     }
+
+    return true;
   }
 
   pub fn get_transformable_by_id(&self, id: Uuid) -> Option<Rc<RefCell<dyn Transformable>>> {

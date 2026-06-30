@@ -14,6 +14,13 @@ pub enum UITab {
   Properties,
 }
 
+#[derive(PartialEq, Eq, Clone, Copy, Debug)]
+pub enum CreateConvexHullMode {
+  Default,
+  RandomPoints,
+  OctreePoints,
+}
+
 #[derive(Clone)]
 pub enum UICommand {
   ScreenShot,
@@ -21,7 +28,7 @@ pub enum UICommand {
   DeleteObject(SelectedObject),
   CloneObject(SelectedObject),
   SaveObject(SelectedObject, PathBuf),
-  CreateConvexHull(SelectedObject, bool),
+  CreateConvexHull(SelectedObject, CreateConvexHullMode),
   Tetrahedralization(SelectedObject),
 }
 
@@ -72,6 +79,7 @@ pub struct UIManager {
   pub selected_object: SelectedObject,
   pub secondary_object_selection: SelectedObject,
   pub gizmo: Gizmo,
+  pub render_gizmo: bool,
 
   pub is_add_object_window_open: bool,
   pub creating_object: CreatingObject,
@@ -88,6 +96,7 @@ impl UIManager {
       selected_object: SelectedObject::None,
       secondary_object_selection: SelectedObject::None,
       gizmo: Gizmo::default(),
+      render_gizmo: true,
       is_add_object_window_open: false,
       creating_object: CreatingObject::default(),
       creating_object_type: CreatingObjectType::default(),
@@ -120,7 +129,7 @@ impl Window {
     egui::CentralPanel::default()
       .frame(egui::Frame::NONE)
       .show(&self.egui.context, |ui| {
-        if let Some(id) = ui_manager.selected_object.try_get_id() {
+        if ui_manager.render_gizmo && let Some(id) = ui_manager.selected_object.try_get_id() {
           if let Some(transformable) = scene.get_transformable_by_id(id) {
             let mut object = transformable.borrow_mut();
             let transform = object.get_transform_mut();
@@ -312,10 +321,14 @@ impl Window {
         }
 
         UICommand::DeleteObject(props) => {
-          match props {
-            SelectedObject::Object(id) => { self.scene.remove_object(id); }
-            SelectedObject::Light(id) => { self.scene.remove_light(id); }
-            SelectedObject::None => {}
+          let removed = match props {
+            SelectedObject::Object(id) => self.scene.remove_object(id),
+            SelectedObject::Light(id) => self.scene.remove_light(id),
+            SelectedObject::None => false,
+          };
+
+          if removed {
+            self.ui_manager.selected_tab = UITab::Objects;
           }
         }
 
@@ -334,9 +347,9 @@ impl Window {
           }
         }
 
-        UICommand::CreateConvexHull(selected_object, use_parry) => {
+        UICommand::CreateConvexHull(selected_object, mode) => {
           match selected_object {
-            SelectedObject::Object(id) => { self.create_convex_hull(id, use_parry); }
+            SelectedObject::Object(id) => { self.create_convex_hull(id, mode); }
             _ => {}
           }
         }

@@ -4,7 +4,7 @@ use std::collections::HashSet;
 use glam::{Vec3, Vec3Swizzles};
 use uuid::Uuid;
 
-use crate::{implement_partial_Object, implement_transformable, objects::{geometry::convex_hull::ConvexHull, mesh::mesh::Mesh, object::{Object, ObjectType}}, opengl::{ebo::EBO, renderer::Renderer, vao::VAO, vbo::VBO}, utils::{core::SIZE_F32, material::Material, ray::Ray, transform::Transform}};
+use crate::{geometry::octree::OctreeNode, implement_partial_Object, implement_transformable, objects::{geometry::convex_hull::ConvexHull, mesh::mesh::Mesh, object::{ConvexHullProps, Object, ObjectType}}, opengl::{ebo::EBO, renderer::Renderer, vao::VAO, vbo::VBO}, utils::{core::SIZE_F32, material::Material, ray::Ray, transform::Transform, vector::wed_points}};
 
 
 pub struct Cylinder {
@@ -245,25 +245,35 @@ impl Object for Cylinder {
     return Some(hull);
   }
 
-  fn convex_hull_with_inner_samples(&self, inner_samples: u32) -> Option<ConvexHull> {
+  fn convex_hull_with_inner_samples(&self, props: ConvexHullProps) -> Option<ConvexHull> {
     let (mut points, faces) = self.get_vertices();
     let mut hull_points = HashSet::new();
     for i in 0..points.len() {
       hull_points.insert(i);
     }
 
-    let mut inner_points = Vec::with_capacity(inner_samples as usize);
-    for _ in 0..inner_samples {
-      let mut point = (Vec3::new(rand::random(), rand::random(), rand::random()) * 2.0 - Vec3::ONE)
-        * Vec3::new(self.radius, self.height, self.radius);
-
-      while !self.contains_point(point) {
-        point = (Vec3::new(rand::random(), rand::random(), rand::random()) * 2.0 - Vec3::ONE)
-          * Vec3::new(self.radius, self.height, self.radius);
+    let mut inner_points = Vec::new();
+    match props {
+      ConvexHullProps::RandomPoints(inner_samples) => {
+        for _ in 0..inner_samples {
+          let mut point = (Vec3::new(rand::random(), rand::random(), rand::random()) * 2.0 - Vec3::ONE)
+            * Vec3::new(self.radius, self.height, self.radius);
+          while !self.contains_point(point) {
+            point = (Vec3::new(rand::random(), rand::random(), rand::random()) * 2.0 - Vec3::ONE)
+              * Vec3::new(self.radius, self.height, self.radius);
+          }
+          inner_points.push(point.as_dvec3());
+        }
       }
-      inner_points.push(point);
+      ConvexHullProps::OctreePoints => {
+        let vertices_f64 = points.iter().map(Vec3::as_dvec3).collect::<Vec<_>>();
+        let octree = OctreeNode::generate_from_mesh(&vertices_f64, &faces, 4);
+        let octree_new_points = octree.get_leaves_centroids(&vertices_f64, &faces);
+        inner_points = octree_new_points
+      }
     }
 
+    let inner_points = wed_points(&points, &inner_points, &faces);
     points.extend(inner_points);
     let new_name = format!("{}_hull", self.name);
     let mesh = Mesh::new(new_name.clone(), points, vec![], faces);

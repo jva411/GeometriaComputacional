@@ -31,7 +31,13 @@ pub trait Object: Transformable {
 
   fn can_generate_convex_hull(&self) -> bool { false }
   fn convex_hull(&self, use_parry: bool) -> Option<ConvexHull> { None }
-  fn convex_hull_with_inner_samples(&self, inner_samples: u32) -> Option<ConvexHull> { None }
+  fn convex_hull_with_inner_samples(&self, props: ConvexHullProps) -> Option<ConvexHull> { None }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConvexHullProps {
+  RandomPoints(u32),
+  OctreePoints,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

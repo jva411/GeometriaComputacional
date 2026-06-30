@@ -5,7 +5,7 @@ use glam::Vec3;
 use rfd::FileDialog;
 use uuid::Uuid;
 
-use crate::{objects::{geometry::{convex_hull::ConvexHull, tetrahedron::TetrahedronObject}, mesh::mesh::Mesh, object::{Object, ObjectType}, primitives::{cone::Cone, cube::Cube, cylinder::Cylinder, planes::square::Square, sphere::Sphere}}, scene::{scene::Scene, ui::ui::{CreatingObject, CreatingObjectType, SelectedObject, UICommand, UIManager}, window::Window}};
+use crate::{objects::{geometry::{convex_hull::ConvexHull, tetrahedron::TetrahedronObject}, mesh::mesh::Mesh, object::{ConvexHullProps, Object, ObjectType}, primitives::{cone::Cone, cube::Cube, cylinder::Cylinder, planes::square::Square, sphere::Sphere}}, scene::{scene::Scene, ui::ui::{CreateConvexHullMode, CreatingObject, CreatingObjectType, SelectedObject, UICommand, UIManager}, window::Window}};
 
 
 #[derive(Clone, Debug)]
@@ -73,15 +73,20 @@ impl Window {
     let object = object.unwrap().clone();
     let object = object.borrow();
 
-    if object.get_type() != ObjectType::ConvexHull {
-      return
-    }
-
-    let hull = object.as_any().downcast_ref::<ConvexHull>().unwrap();
-    let _ = hull.export_to_obj(path);
+    match object.get_type() {
+      ObjectType::ConvexHull => {
+        let hull = object.as_any().downcast_ref::<ConvexHull>().unwrap();
+        let _ = hull.export_to_obj(path);
+      }
+      ObjectType::Tetrahedron => {
+        let tetrahedron = object.as_any().downcast_ref::<TetrahedronObject>().unwrap();
+        let _ = tetrahedron.export_to_obj(path);
+      }
+      _ => {}
+    };
   }
 
-  pub fn create_convex_hull(&mut self, selected_id: Uuid, _use_parry: bool) {
+  pub fn create_convex_hull(&mut self, selected_id: Uuid, mode: CreateConvexHullMode) {
     let object = self.scene.objects_by_id.get(&selected_id);
     if object.is_none() {
       return
@@ -89,9 +94,12 @@ impl Window {
 
     let object = object.unwrap().clone();
     let object = object.borrow();
-    // let n_samples = 10;
-    // let hull = object.convex_hull_with_inner_samples(n_samples);
-    let hull = object.convex_hull(false);
+    let n_samples = 100;
+    let hull = match mode {
+      CreateConvexHullMode::Default => object.convex_hull(false),
+      CreateConvexHullMode::RandomPoints => object.convex_hull_with_inner_samples(ConvexHullProps::RandomPoints(n_samples)),
+      CreateConvexHullMode::OctreePoints => object.convex_hull_with_inner_samples(ConvexHullProps::OctreePoints),
+    };
     if hull.is_none() {
       return
     }
@@ -115,7 +123,7 @@ impl Window {
     }
 
     let hull = object.as_any().downcast_ref::<ConvexHull>().unwrap();
-    let tetrahedron_object = hull.tetrahedralization(true);
+    let tetrahedron_object = hull.tetrahedralization();
     if tetrahedron_object.is_none() {
       return
     }
@@ -170,7 +178,7 @@ impl Window {
         ui_manager.commands_queue.push(UICommand::CloneObject(SelectedObject::Object(selected_id)));
       }
 
-      if object.get_type() == ObjectType::ConvexHull {
+      if object.get_type() == ObjectType::ConvexHull || object.get_type() == ObjectType::Tetrahedron {
         if ui.button("Save OBJ").clicked() {
           let path = FileDialog::new()
             .add_filter("OBJ", &["obj"])
@@ -242,11 +250,17 @@ impl Window {
 
     if object.can_generate_convex_hull() {
       if ui.button("Convex Hull").clicked() {
-        ui_manager.commands_queue.push(UICommand::CreateConvexHull(SelectedObject::Object(selected_id), false));
+        ui_manager.commands_queue.push(UICommand::CreateConvexHull(SelectedObject::Object(selected_id), CreateConvexHullMode::Default));
       }
 
-      if ui.button("Convex Hull (Parry)").clicked() {
-        ui_manager.commands_queue.push(UICommand::CreateConvexHull(SelectedObject::Object(selected_id), true));
+      if object.get_type() != ObjectType::Mesh {
+        if ui.button("Convex Hull (Random)").clicked() {
+          ui_manager.commands_queue.push(UICommand::CreateConvexHull(SelectedObject::Object(selected_id), CreateConvexHullMode::RandomPoints));
+        }
+      }
+
+      if ui.button("Convex Hull (Octree)").clicked() {
+        ui_manager.commands_queue.push(UICommand::CreateConvexHull(SelectedObject::Object(selected_id), CreateConvexHullMode::OctreePoints));
       }
     }
 
@@ -266,6 +280,13 @@ impl Window {
       ui.label("Shrink: ");
       ui.add(egui::DragValue::new(&mut object.shrink).range(0.0..=0.99).speed(0.01));
 
+      ui.checkbox(&mut object.render_points, "View Points");
+      ui.checkbox(&mut object.render_mesh, "View Mesh");
+      ui.checkbox(&mut object.render_wireframe, "Wireframe");
+    }
+
+    if object.get_type() == ObjectType::Mesh {
+      let object = object.as_any_mut().downcast_mut::<Mesh>().unwrap();
       ui.checkbox(&mut object.render_points, "View Points");
       ui.checkbox(&mut object.render_mesh, "View Mesh");
       ui.checkbox(&mut object.render_wireframe, "Wireframe");

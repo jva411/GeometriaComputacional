@@ -1,5 +1,6 @@
-use glam::Vec3;
 use std::{collections::{HashSet, VecDeque}, fmt::Display};
+
+use glam::{DVec3, Vec3};
 
 use crate::geometry::octree::{AABB, PointOctree};
 
@@ -29,7 +30,7 @@ pub struct Tetrahedron(pub usize, pub usize, pub usize, pub usize);
 
 #[derive(Debug)]
 pub struct TetrahedralMesh {
-  pub points: Vec<Vec3>,
+  pub points: Vec<DVec3>,
   pub tetrahedrons: Vec<Tetrahedron>,
 }
 
@@ -39,8 +40,10 @@ pub fn try_advancing_front(points: &Vec<Vec3>, hull_points: &Vec<usize>, hull_fa
     return None;
   }
 
-  let mut min_bound = Vec3::splat(f32::MAX);
-  let mut max_bound = Vec3::splat(f32::MIN);
+  let points = &points.iter().map(Vec3::as_dvec3).collect::<Vec<_>>();
+
+  let mut min_bound = DVec3::splat(f64::MAX);
+  let mut max_bound = DVec3::splat(f64::MIN);
   for &p in points {
     min_bound = min_bound.min(p);
     max_bound = max_bound.max(p);
@@ -51,7 +54,7 @@ pub fn try_advancing_front(points: &Vec<Vec3>, hull_points: &Vec<usize>, hull_fa
   let point_octree = PointOctree::new(points, all_points_indices.clone(), bounds, 0, 7);
 
   let mesh_scale = (bounds.max - bounds.min).length().max(1e-6);
-  let det_epsilon = (mesh_scale * mesh_scale * mesh_scale) * 1e-7;
+  let det_epsilon = (mesh_scale * mesh_scale * mesh_scale) * 1e-12;
 
   let max_tetrahedrons = (points.len() * 20).max(1000);
   let log_interval: u64 = 2000;
@@ -124,10 +127,10 @@ pub fn try_advancing_front(points: &Vec<Vec3>, hull_points: &Vec<usize>, hull_fa
       let max_edge = (p1 - p2).length().max((p2 - p3).length()).max((p3 - p1).length());
 
       let max_search_limit = (bounds.max - bounds.min).length();
-      let mut search_radius = (max_edge * 2.0).max(1e-4).min(max_search_limit);
+      let mut search_radius = (max_edge * 2.0).max(1e-8).min(max_search_limit);
 
       let mut best_point: Option<usize> = None;
-      let mut fallback_point: Option<(usize, f32)> = None;
+      let mut fallback_point: Option<(usize, f64)> = None;
       let mut points_in_radius = Vec::new();
 
       while search_radius <= max_search_limit {
@@ -142,26 +145,33 @@ pub fn try_advancing_front(points: &Vec<Vec3>, hull_points: &Vec<usize>, hull_fa
           if generated_tetras.contains(&tet_signature) { continue; }
 
           let candidate_pt = points[point_index];
-          let dot = normal.dot(candidate_pt - p1);
+          let to_candidate = candidate_pt - p1;
 
-          if dot >= -det_epsilon || (dot.abs() / 6.0) < det_epsilon { continue; }
+          let face_normal_normalized = normal.normalize();
+
+          let height = face_normal_normalized.dot(to_candidate);
+
+          let height_tolerance = max_edge * 0.005;
+
+          if height > -height_tolerance {
+            continue;
+          }
 
           let a = p2 - p1;
           let b = p3 - p1;
           let c = candidate_pt - p1;
           let det = 2.0 * a.dot(b.cross(c));
+          if det.abs() <= det_epsilon { continue; }
 
-          if det.abs() > det_epsilon {
-            let center_offset = (
-              a.length_squared() * b.cross(c) +
-              b.length_squared() * c.cross(a) +
-              c.length_squared() * a.cross(b)
-            ) / det;
-            let radius_sq = center_offset.length_squared();
-            let circumcenter = p1 + center_offset;
+          let center_offset = (
+            a.length_squared() * b.cross(c) +
+            b.length_squared() * c.cross(a) +
+            c.length_squared() * a.cross(b)
+          ) / det;
+          let radius_sq = center_offset.length_squared();
+          let circumcenter = p1 + center_offset;
 
-            candidates.push((point_index, radius_sq, circumcenter));
-          }
+          candidates.push((point_index, radius_sq, circumcenter));
         }
 
         candidates.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
@@ -240,11 +250,11 @@ pub fn try_advancing_front(points: &Vec<Vec3>, hull_points: &Vec<usize>, hull_fa
 }
 
 pub fn is_valid_tetrahedron(
-  points: &Vec<Vec3>,
+  points: &Vec<DVec3>,
   base_face: &Face,
   candidate_idx: usize,
   front: &HashSet<Face>,
-  epsilon: f32,
+  epsilon: f64,
 ) -> bool {
   let p0 = points[base_face.0];
   let p1 = points[base_face.1];
@@ -280,7 +290,7 @@ pub fn is_valid_tetrahedron(
     let face_min = fp0.min(fp1).min(fp2);
     let face_max = fp0.max(fp1).max(fp2);
 
-    let pad = 1e-4;
+    let pad = 1e-8;
     if tet_max.x < face_min.x - pad || tet_min.x > face_max.x + pad ||
       tet_max.y < face_min.y - pad || tet_min.y > face_max.y + pad ||
       tet_max.z < face_min.z - pad || tet_min.z > face_max.z + pad {
@@ -314,8 +324,8 @@ pub fn is_valid_tetrahedron(
 }
 
 
-fn segment_intersects_triangle_interior(p: Vec3, q: Vec3, v0: Vec3, v1: Vec3, v2: Vec3, degeneracy_epsilon: f32) -> bool {
-  const PARAM_EPSILON: f32 = 1e-6;
+fn segment_intersects_triangle_interior(p: DVec3, q: DVec3, v0: DVec3, v1: DVec3, v2: DVec3, degeneracy_epsilon: f64) -> bool {
+  const PARAM_EPSILON: f64 = 1e-10;
 
   let edge1 = v1 - v0;
   let edge2 = v2 - v0;
@@ -350,9 +360,9 @@ fn segment_intersects_triangle_interior(p: Vec3, q: Vec3, v0: Vec3, v1: Vec3, v2
 
 pub fn is_sphere_empty_octree(
   octree: &PointOctree,
-  points: &Vec<Vec3>,
-  circumcenter: Vec3,
-  radius_sq: f32,
+  points: &Vec<DVec3>,
+  circumcenter: DVec3,
+  radius_sq: f64,
   ignore_indices: [usize; 4]
 ) -> bool {
   let mut points_in_sphere = Vec::new();
@@ -368,11 +378,11 @@ pub fn is_sphere_empty_octree(
   true
 }
 
-fn shares_vertex(start: Vec3, end: Vec3, v0: Vec3, v1: Vec3, v2: Vec3) -> bool {
+fn shares_vertex(start: DVec3, end: DVec3, v0: DVec3, v1: DVec3, v2: DVec3) -> bool {
   start == v0 || start == v1 || start == v2 || end == v0 || end == v1 || end == v2
 }
 
-fn face_area(points: &Vec<Vec3>, face: &Face) -> f32 {
+fn face_area(points: &Vec<DVec3>, face: &Face) -> f64 {
   let p0 = points[face.0];
   let p1 = points[face.1];
   let p2 = points[face.2];

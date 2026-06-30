@@ -1,3 +1,7 @@
+use std::fs::File;
+use std::io::{BufWriter, Write};
+use std::path::PathBuf;
+
 use glam::Vec3;
 use uuid::Uuid;
 use crate::geometry::tetrahedralization::Tetrahedron;
@@ -124,6 +128,42 @@ impl TetrahedronObject {
     self.ebo.send_data(&index_data);
 
     self.elements_count = index_data.len() as i32;
+  }
+
+  pub fn export_to_obj(&self, file_path: PathBuf) -> std::io::Result<()> {
+    let file = File::create(file_path)?;
+    let mut writer = BufWriter::new(file);
+
+    writeln!(writer, "o {}", self.name)?;
+
+    let mut vertex_offset = 1;
+
+    for (group_index, part) in self.parts.iter().enumerate() {
+      writeln!(writer, "g Parte_{}", group_index + 1)?;
+
+      for v in &part.points {
+        writeln!(writer, "v {:.6} {:.6} {:.6}", v.x, v.y, v.z)?;
+      }
+
+      for tetra in &part.tetrahedrons {
+        let v0 = tetra.0 + vertex_offset;
+        let v1 = tetra.1 + vertex_offset;
+        let v2 = tetra.2 + vertex_offset;
+        let v3 = tetra.3 + vertex_offset;
+
+        writeln!(writer, "f {} {} {}", v0, v1, v2)?;
+        writeln!(writer, "f {} {} {}", v0, v2, v3)?;
+        writeln!(writer, "f {} {} {}", v0, v3, v1)?;
+        writeln!(writer, "f {} {} {}", v1, v3, v2)?;
+      }
+
+      writer.flush()?;
+
+      vertex_offset += part.points.len();
+    }
+
+    writer.flush()?;
+    Ok(())
   }
 }
 

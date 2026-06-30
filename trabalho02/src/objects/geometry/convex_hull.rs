@@ -1,9 +1,9 @@
 use std::{collections::{HashMap, HashSet}, fs::File, io::{BufWriter, Write}, path::PathBuf};
 
-use glam::Vec3;
+use glam::{DVec3, Vec3};
 use uuid::Uuid;
 
-use crate::{geometry::{octree::OctreeNode, tetrahedralization::try_advancing_front}, implement_partial_Object, implement_transformable, objects::{geometry::tetrahedron::TetrahedronObject, mesh::mesh::Mesh, object::{Object, ObjectType}}, opengl::{renderer::Renderer, vao::VAO, vbo::VBO}, utils::{material::Material, transform::Transform}};
+use crate::{geometry::tetrahedralization::try_advancing_front, implement_partial_Object, implement_transformable, objects::{geometry::tetrahedron::TetrahedronObject, mesh::mesh::Mesh, object::{Object, ObjectType}}, opengl::{renderer::Renderer, vao::VAO, vbo::VBO}, utils::{material::Material, transform::Transform}};
 
 pub struct ConvexHull {
   pub id: Uuid,
@@ -113,27 +113,9 @@ impl ConvexHull {
     Ok(())
   }
 
-  pub fn tetrahedralization(&self, use_octree: bool) -> Option<TetrahedronObject> {
+  pub fn tetrahedralization(&self) -> Option<TetrahedronObject> {
     let mut parts = Vec::new();
-
-    let points = if use_octree {
-      let octree = OctreeNode::generate_from_mesh(&self.mesh.vertices, &self.mesh.faces, 4);
-      let octree_new_points = octree.get_leaves_centroids(&self.mesh.vertices, &self.mesh.faces);
-      let avg_edge = average_edge_length(&self.mesh.vertices, &self.hull_parts);
-      let min_dist = (avg_edge * 0.25).max(1e-5);
-
-      let mut all_points = self.mesh.vertices.clone();
-      let filtered_octree_points = filter_close_points(&all_points, &octree_new_points, min_dist);
-      println!(
-        "Octree: {} pontos candidatos, {} aceitos após filtro de proximidade (min_dist={:.6})",
-        octree_new_points.len(), filtered_octree_points.len(), min_dist
-      );
-      all_points.extend(filtered_octree_points);
-      all_points
-      // self.mesh.vertices.clone()
-    } else {
-      self.mesh.vertices.clone()
-    };
+    let points = self.mesh.vertices.clone();
 
     for part_faces in &self.hull_parts {
       if part_faces.len() < 3 {
@@ -151,7 +133,7 @@ impl ConvexHull {
         if !mesh.tetrahedrons.is_empty() {
           println!("{} tetrahedrons", mesh.tetrahedrons.len());
           parts.push(crate::objects::geometry::tetrahedron::TetrahedronPart {
-            points: mesh.points,
+            points: mesh.points.iter().map(DVec3::as_vec3).collect(),
             tetrahedrons: mesh.tetrahedrons,
           });
         } else {
@@ -217,72 +199,3 @@ impl Object for ConvexHull {
 }
 
 implement_transformable!(ConvexHull);
-
-
-
-fn average_edge_length(vertices: &[Vec3], hull_parts: &[Vec<u32>]) -> f32 {
-  let mut total = 0.0f32;
-  let mut count = 0u32;
-
-  for part in hull_parts {
-    for chunk in part.chunks_exact(3) {
-      let a = vertices[chunk[0] as usize];
-      let b = vertices[chunk[1] as usize];
-      let c = vertices[chunk[2] as usize];
-      total += (a - b).length() + (b - c).length() + (c - a).length();
-      count += 3;
-    }
-  }
-
-  if count == 0 { 1.0 } else { total / count as f32 }
-}
-
-fn filter_close_points(existing: &[Vec3], candidates: &[Vec3], min_dist: f32) -> Vec<Vec3> {
-  if min_dist <= 0.0 {
-    return candidates.to_vec();
-  }
-
-  let cell_size = min_dist;
-  let cell_of = |p: Vec3| -> (i64, i64, i64) {
-    (
-      (p.x / cell_size).floor() as i64,
-      (p.y / cell_size).floor() as i64,
-      (p.z / cell_size).floor() as i64,
-    )
-  };
-
-  let mut grid: HashMap<(i64, i64, i64), Vec<Vec3>> = HashMap::new();
-  for &p in existing {
-    grid.entry(cell_of(p)).or_insert_with(Vec::new).push(p);
-  }
-
-  let min_dist_sq = min_dist * min_dist;
-  let mut accepted = Vec::new();
-
-  for &p in candidates {
-    let (cx, cy, cz) = cell_of(p);
-    let mut too_close = false;
-
-    'neighbors: for dx in -1..=1 {
-      for dy in -1..=1 {
-        for dz in -1..=1 {
-          if let Some(cell_points) = grid.get(&(cx + dx, cy + dy, cz + dz)) {
-            for &other in cell_points {
-              if (other - p).length_squared() < min_dist_sq {
-                too_close = true;
-                break 'neighbors;
-              }
-            }
-          }
-        }
-      }
-    }
-
-    if !too_close {
-      grid.entry((cx, cy, cz)).or_insert_with(Vec::new).push(p);
-      accepted.push(p);
-    }
-  }
-
-  accepted
-}

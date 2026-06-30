@@ -1,4 +1,4 @@
-use glam::Vec3;
+use glam::DVec3;
 use rand::RngExt;
 
 
@@ -11,8 +11,8 @@ pub enum OctreeNodeType {
 
 #[derive(Debug, Clone, Copy)]
 pub struct AABB {
-  pub min: Vec3,
-  pub max: Vec3,
+  pub min: DVec3,
+  pub max: DVec3,
 }
 
 #[derive(Debug, Clone)]
@@ -31,13 +31,13 @@ impl OctreeNode {
     }
   }
 
-  pub fn get_leaves_centroids(&self, points: &Vec<Vec3>, faces: &Vec<u32>) -> Vec<Vec3> {
+  pub fn get_leaves_centroids(&self, points: &Vec<DVec3>, faces: &Vec<u32>) -> Vec<DVec3> {
     let mut new_points = Vec::new();
     self.get_leaves_centroids_rec(points, faces, &mut new_points);
     new_points
   }
 
-  fn get_leaves_centroids_rec(&self, points: &Vec<Vec3>, faces: &Vec<u32>, new_points: &mut Vec<Vec3>) {
+  fn get_leaves_centroids_rec(&self, points: &Vec<DVec3>, faces: &Vec<u32>, new_points: &mut Vec<DVec3>) {
     if self.node_type == OctreeNodeType::OUT {
       return;
     }
@@ -46,7 +46,7 @@ impl OctreeNode {
       let mut rng = rand::rng();
       let cell_diagonal = (self.aabb.max - self.aabb.min).length();
       let jitter_scale = cell_diagonal * 1e-3;
-      let point = ((self.aabb.min + self.aabb.max) * 0.5) + Vec3::new(rng.random(), rng.random(), rng.random()) * jitter_scale;
+      let point = ((self.aabb.min + self.aabb.max) * 0.5) + DVec3::new(rng.random(), rng.random(), rng.random()) * jitter_scale;
       new_points.push(point);
       return;
     }
@@ -58,9 +58,9 @@ impl OctreeNode {
     }
   }
 
-  pub fn generate_from_mesh(points: &Vec<Vec3>, faces: &Vec<u32>, max_depth: u32) -> Self {
-    let mut min = Vec3::splat(f32::MAX);
-    let mut max = Vec3::splat(f32::MIN);
+  pub fn generate_from_mesh(points: &Vec<DVec3>, faces: &Vec<u32>, max_depth: u32) -> Self {
+    let mut min = DVec3::splat(f64::MAX);
+    let mut max = DVec3::splat(f64::MIN);
 
     for &point in points.iter() {
       min = min.min(point) * 0.9999999;
@@ -71,14 +71,14 @@ impl OctreeNode {
     let min = root_aabb.min.min_element();
     let max = root_aabb.max.max_element();
 
-    let root_aabb = AABB { min: Vec3::splat(min), max: Vec3::splat(max) };
+    let root_aabb = AABB { min: DVec3::splat(min), max: DVec3::splat(max) };
     let mut root_node = OctreeNode::new(root_aabb, OctreeNodeType::PARTIAL);
     OctreeNode::subdivide_node(points, faces, &mut root_node, 0, max_depth);
 
     root_node
   }
 
-  fn subdivide_node(points: &Vec<Vec3>, faces: &Vec<u32>, node: &mut OctreeNode, depth: u32, max_depth: u32) {
+  fn subdivide_node(points: &Vec<DVec3>, faces: &Vec<u32>, node: &mut OctreeNode, depth: u32, max_depth: u32) {
     if depth >= max_depth {
       return;
     }
@@ -87,12 +87,12 @@ impl OctreeNode {
     let mid = (node.aabb.min + node.aabb.max) * 0.5;
 
     for i in 0..8 {
-      let min = Vec3::new(
+      let min = DVec3::new(
         if (i & 1) == 0 { node.aabb.min.x } else { mid.x },
         if (i & 2) == 0 { node.aabb.min.y } else { mid.y },
         if (i & 4) == 0 { node.aabb.min.z } else { mid.z },
       );
-      let max = Vec3::new(
+      let max = DVec3::new(
         if (i & 1) == 0 { mid.x } else { node.aabb.max.x },
         if (i & 2) == 0 { mid.y } else { node.aabb.max.y },
         if (i & 4) == 0 { mid.z } else { node.aabb.max.z },
@@ -113,7 +113,7 @@ impl OctreeNode {
   }
 }
 
-fn mesh_classify_aabb(points: &Vec<Vec3>, faces: &Vec<u32>, aabb: &AABB) -> OctreeNodeType {
+fn mesh_classify_aabb(points: &Vec<DVec3>, faces: &Vec<u32>, aabb: &AABB) -> OctreeNodeType {
   let center = (aabb.min + aabb.max) / 2.0;
   let half_size = (aabb.max - aabb.min) / 2.0;
 
@@ -130,11 +130,11 @@ fn mesh_classify_aabb(points: &Vec<Vec3>, faces: &Vec<u32>, aabb: &AABB) -> Octr
   mesh_classify_point(points, faces, center)
 }
 
-fn mesh_classify_point(points: &Vec<Vec3>, faces: &Vec<u32>, point: Vec3) -> OctreeNodeType {
+fn mesh_classify_point(points: &Vec<DVec3>, faces: &Vec<u32>, point: DVec3) -> OctreeNodeType {
   let directions = [
-    Vec3::new(0.3123, 0.7854, 0.5352).normalize(),
-    Vec3::new(-0.6121, 0.1857, -0.7358).normalize(),
-    Vec3::new(0.8124, -0.5852, 0.1359).normalize(),
+    DVec3::new(0.3123, 0.7854, 0.5352).normalize(),
+    DVec3::new(-0.6121, 0.1857, -0.7358).normalize(),
+    DVec3::new(0.8124, -0.5852, 0.1359).normalize(),
   ];
 
   let mut in_count = 0;
@@ -163,7 +163,7 @@ fn mesh_classify_point(points: &Vec<Vec3>, faces: &Vec<u32>, point: Vec3) -> Oct
   }
 }
 
-fn triangle_overlaps_box(boxcenter: Vec3, boxhalfsize: Vec3, trivet0: Vec3, trivet1: Vec3, trivet2: Vec3) -> bool {
+fn triangle_overlaps_box(boxcenter: DVec3, boxhalfsize: DVec3, trivet0: DVec3, trivet1: DVec3, trivet2: DVec3) -> bool {
   let v0 = trivet0 - boxcenter;
   let v1 = trivet1 - boxcenter;
   let v2 = trivet2 - boxcenter;
@@ -173,9 +173,9 @@ fn triangle_overlaps_box(boxcenter: Vec3, boxhalfsize: Vec3, trivet0: Vec3, triv
   let e2 = v0 - v2;
 
   let axes = [
-    Vec3::X.cross(e0), Vec3::X.cross(e1), Vec3::X.cross(e2),
-    Vec3::Y.cross(e0), Vec3::Y.cross(e1), Vec3::Y.cross(e2),
-    Vec3::Z.cross(e0), Vec3::Z.cross(e1), Vec3::Z.cross(e2),
+    DVec3::X.cross(e0), DVec3::X.cross(e1), DVec3::X.cross(e2),
+    DVec3::Y.cross(e0), DVec3::Y.cross(e1), DVec3::Y.cross(e2),
+    DVec3::Z.cross(e0), DVec3::Z.cross(e1), DVec3::Z.cross(e2),
   ];
 
   for axis in axes {
@@ -188,7 +188,7 @@ fn triangle_overlaps_box(boxcenter: Vec3, boxhalfsize: Vec3, trivet0: Vec3, triv
     }
   }
 
-  let box_axes = [Vec3::X, Vec3::Y, Vec3::Z];
+  let box_axes = [DVec3::X, DVec3::Y, DVec3::Z];
   for &axis in &box_axes {
     let p0 = v0.dot(axis);
     let p1 = v1.dot(axis);
@@ -209,8 +209,8 @@ fn triangle_overlaps_box(boxcenter: Vec3, boxhalfsize: Vec3, trivet0: Vec3, triv
   true
 }
 
-fn ray_intersects_triangle(orig: Vec3, dir: Vec3, v0: Vec3, v1: Vec3, v2: Vec3) -> bool {
-  const EPSILON: f32 = 0.000001;
+fn ray_intersects_triangle(orig: DVec3, dir: DVec3, v0: DVec3, v1: DVec3, v2: DVec3) -> bool {
+  const EPSILON: f64 = 0.000001;
   let edge1 = v1 - v0;
   let edge2 = v2 - v0;
   let h = dir.cross(edge2);
@@ -248,7 +248,7 @@ pub struct PointOctree {
 
 impl PointOctree {
   /// Constrói a Octree a partir de uma lista de pontos e seus índices
-  pub fn new(points: &Vec<Vec3>, indices: Vec<usize>, aabb: AABB, depth: u32, max_depth: u32) -> Self {
+  pub fn new(points: &Vec<DVec3>, indices: Vec<usize>, aabb: AABB, depth: u32, max_depth: u32) -> Self {
     let max_points_per_leaf = 16;
 
     // Condição de parada: limite de profundidade ou poucos pontos no nó
@@ -272,12 +272,12 @@ impl PointOctree {
     // Cria os nós filhos
     let mut children = Vec::with_capacity(8);
     for i in 0..8 {
-      let min = Vec3::new(
+      let min = DVec3::new(
         if (i & 1) == 0 { aabb.min.x } else { mid.x },
         if (i & 2) == 0 { aabb.min.y } else { mid.y },
         if (i & 4) == 0 { aabb.min.z } else { mid.z },
       );
-      let max = Vec3::new(
+      let max = DVec3::new(
         if (i & 1) == 0 { mid.x } else { aabb.max.x },
         if (i & 2) == 0 { mid.y } else { aabb.max.y },
         if (i & 4) == 0 { mid.z } else { aabb.max.z },
@@ -299,7 +299,7 @@ impl PointOctree {
     }
   }
 
-  pub fn query_sphere(&self, points: &Vec<Vec3>, center: Vec3, radius_sq: f32, result: &mut Vec<usize>) {
+  pub fn query_sphere(&self, points: &Vec<DVec3>, center: DVec3, radius_sq: f64, result: &mut Vec<usize>) {
     if !self.aabb_intersects_sphere(center, radius_sq) {
       return;
     }
@@ -318,12 +318,12 @@ impl PointOctree {
     }
   }
 
-  fn aabb_intersects_sphere(&self, center: Vec3, radius_sq: f32) -> bool {
+  fn aabb_intersects_sphere(&self, center: DVec3, radius_sq: f64) -> bool {
     let x = center.x.max(self.aabb.min.x).min(self.aabb.max.x);
     let y = center.y.max(self.aabb.min.y).min(self.aabb.max.y);
     let z = center.z.max(self.aabb.min.z).min(self.aabb.max.z);
 
-    let closest_point = Vec3::new(x, y, z);
+    let closest_point = DVec3::new(x, y, z);
     (closest_point - center).length_squared() <= radius_sq
   }
 }

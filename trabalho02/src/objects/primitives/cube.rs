@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use glam::Vec3;
 use uuid::Uuid;
 
-use crate::{implement_partial_Object, implement_transformable, objects::{geometry::convex_hull::ConvexHull, mesh::mesh::Mesh, object::{Object, ObjectType}}, opengl::{ebo::EBO, renderer::Renderer, vao::VAO, vbo::VBO}, utils::{core::SIZE_F32, material::Material, transform::Transform}};
+use crate::{geometry::octree::OctreeNode, implement_partial_Object, implement_transformable, objects::{geometry::convex_hull::ConvexHull, mesh::mesh::Mesh, object::{ConvexHullProps, Object, ObjectType}}, opengl::{ebo::EBO, renderer::Renderer, vao::VAO, vbo::VBO}, utils::{core::SIZE_F32, material::Material, transform::Transform, vector::wed_points}};
 
 #[allow(dead_code)]
 pub struct Cube {
@@ -176,14 +176,26 @@ impl Object for Cube {
     return Some(hull);
   }
 
-  fn convex_hull_with_inner_samples(&self, inner_samples: u32) -> Option<ConvexHull> {
+  fn convex_hull_with_inner_samples(&self, props: ConvexHullProps) -> Option<ConvexHull> {
     let (mut points, faces) = self.get_vertices();
 
-    let mut inner_points = vec![];
-    for _ in 0..inner_samples {
-      inner_points.push(Vec3::new(rand::random(), rand::random(), rand::random()) - Vec3::ONE * 0.5);
+    let mut inner_points = Vec::new();
+    match props {
+      ConvexHullProps::RandomPoints(inner_samples) => {
+        for _ in 0..inner_samples {
+          let point = Vec3::new(rand::random(), rand::random(), rand::random()) - Vec3::ONE * 0.5;
+          inner_points.push(point.as_dvec3());
+        }
+      }
+      ConvexHullProps::OctreePoints => {
+        let vertices_f64 = points.iter().map(Vec3::as_dvec3).collect::<Vec<_>>();
+        let octree = OctreeNode::generate_from_mesh(&vertices_f64, &faces, 4);
+        let octree_new_points = octree.get_leaves_centroids(&vertices_f64, &faces);
+        inner_points = octree_new_points
+      }
     }
 
+    let inner_points = wed_points(&points, &inner_points, &faces);
     points.extend(inner_points);
     let mesh = Mesh::new(self.name.clone(), points, vec![], faces);
     let mut hull = ConvexHull::new(self.name.clone(), mesh, HashSet::from([0, 1, 2, 3, 4, 5, 6, 7]));

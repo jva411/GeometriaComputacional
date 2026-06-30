@@ -68,6 +68,12 @@ impl Window {
       Keycode::P => {
         self.ui_manager.commands_queue.push(UICommand::ScreenShot);
       }
+      Keycode::Delete => {
+        self.ui_manager.commands_queue.push(UICommand::DeleteObject(self.ui_manager.selected_object.clone()));
+      }
+      Keycode::G => {
+        self.ui_manager.render_gizmo = !self.ui_manager.render_gizmo;
+      }
       _ => {}
     };
 

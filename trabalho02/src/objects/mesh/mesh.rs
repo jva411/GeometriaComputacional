@@ -4,7 +4,7 @@ use glam::Vec3;
 use parry3d::transformation::{convex_hull as parry_convex_hull, vhacd::{VHACD, VHACDParameters}};
 use uuid::Uuid;
 
-use crate::{geometry::convex_hull::convex_hull, implement_partial_Object, implement_transformable, objects::{geometry::convex_hull::ConvexHull, object::{Object, ObjectType}}, opengl::{ebo::EBO, renderer::Renderer, vao::VAO, vbo::VBO}, utils::{core::SIZE_F32, material::Material, ray::Ray, transform::Transform, vector::calculate_normals}};
+use crate::{geometry::{convex_hull::convex_hull, octree::OctreeNode}, implement_partial_Object, implement_transformable, objects::{geometry::convex_hull::ConvexHull, object::{ConvexHullProps, Object, ObjectType}}, opengl::{ebo::EBO, renderer::Renderer, vao::VAO, vbo::VBO}, utils::{core::SIZE_F32, material::Material, ray::Ray, transform::Transform, vector::{calculate_normals, wed_points}}};
 
 pub struct Mesh {
   pub id: Uuid,
@@ -16,6 +16,10 @@ pub struct Mesh {
   pub vertices: Vec<Vec3>,
   pub normals: Vec<Vec3>,
   pub faces: Vec<u32>,
+
+  pub render_mesh: bool,
+  pub render_wireframe: bool,
+  pub render_points: bool,
 
   pub vao: VAO,
   pub vbo: VBO,
@@ -61,6 +65,10 @@ impl Mesh {
       vertices,
       normals,
       faces,
+
+      render_mesh: true,
+      render_wireframe: false,
+      render_points: false,
 
       vao,
       vbo,
@@ -212,8 +220,20 @@ impl Mesh {
     return parts_indices;
   }
 
-  fn convex_hull_without_decomposition(&self) -> Option<ConvexHull> {
-    let (hull_vertices, hull_faces) = convex_hull(&self.vertices);
+  fn convex_hull_without_decomposition(&self, octree: bool) -> Option<ConvexHull> {
+    let mut all_points = self.vertices.clone();
+
+    if octree {
+      let vertices_f64 = self.vertices.iter().map(Vec3::as_dvec3).collect::<Vec<_>>();
+      let octree = OctreeNode::generate_from_mesh(&vertices_f64, &self.faces, 4);
+      let octree_new_points = octree.get_leaves_centroids(&vertices_f64, &self.faces);
+      let inner_points = wed_points(&self.vertices, &octree_new_points, &self.faces);
+
+      all_points.extend(inner_points);
+    }
+
+    let (hull_vertices, hull_faces) = convex_hull(&all_points);
+
     let mut hull_faces_u32 = Vec::new();
     for face in &hull_faces {
       hull_faces_u32.push(face[0] as u32);
@@ -223,7 +243,7 @@ impl Mesh {
 
     let mesh = Mesh::new(
       format!("{}_convex_hull", self.name),
-      self.vertices.clone(),
+      all_points,
       Vec::new(),
       hull_faces_u32,
     );
@@ -263,7 +283,36 @@ impl Object for Mesh {
     self.material.send_to_program(&program);
 
     unsafe {
-      gl::DrawElements(gl::TRIANGLES, self.faces.len() as i32, gl::UNSIGNED_INT, 0 as *const _);
+      if self.render_mesh {
+        gl::PolygonMode(gl::FRONT_AND_BACK, gl::FILL);
+        gl::DrawElements(gl::TRIANGLES, self.faces.len() as i32, gl::UNSIGNED_INT, 0 as *const _);
+      }
+
+      if self.render_wireframe {
+        let _ = program.set_uniform_bool("uSimplex", true);
+        let _ = program.set_uniform_bool("uUseSimplexColor", true);
+        let _ = program.set_uniform_vec3f("uSimplexColor", Vec3::new(0.0, 0.0, 0.0));
+
+        gl::PolygonMode(gl::FRONT_AND_BACK, gl::LINE);
+        gl::LineWidth(1.5);
+        gl::DrawElements(gl::TRIANGLES, self.faces.len() as i32, gl::UNSIGNED_INT, 0 as *const _);
+        gl::PolygonMode(gl::FRONT_AND_BACK, gl::FILL);
+
+        let _ = program.set_uniform_bool("uUseSimplexColor", false);
+        let _ = program.set_uniform_bool("uSimplex", false);
+      }
+
+      if self.render_points {
+        let _ = program.set_uniform_bool("uSimplex", true);
+        let _ = program.set_uniform_bool("uUseSimplexColor", true);
+        let _ = program.set_uniform_vec3f("uSimplexColor", Vec3::new(1.0, 1.0, 1.0));
+
+        gl::PointSize(5.0);
+        gl::DrawArrays(gl::POINTS, 0, self.vertices.len() as i32);
+
+        let _ = program.set_uniform_bool("uUseSimplexColor", false);
+        let _ = program.set_uniform_bool("uSimplex", false);
+      }
     }
   }
 
@@ -281,7 +330,7 @@ impl Object for Mesh {
   fn can_generate_convex_hull(&self) -> bool { true }
 
   fn convex_hull(&self, use_parry: bool) -> Option<ConvexHull> {
-    return self.convex_hull_without_decomposition();
+    return self.convex_hull_without_decomposition(use_parry);
     let parts_indices = self.convex_decomposition();
 
     let mut final_hull_faces = Vec::new();
@@ -359,8 +408,8 @@ impl Object for Mesh {
     return Some(hull);
   }
 
-  fn convex_hull_with_inner_samples(&self, _inner_samples: u32) -> Option<ConvexHull> {
-    return self.convex_hull(false);
+  fn convex_hull_with_inner_samples(&self, props: ConvexHullProps) -> Option<ConvexHull> {
+    return self.convex_hull(props == ConvexHullProps::OctreePoints);
   }
 }
 
